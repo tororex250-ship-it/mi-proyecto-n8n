@@ -1,0 +1,98 @@
+{
+  "name": "Registro de incidencias de GitHub con Gemini",
+  "nodes": [
+    {
+      "parameters": {
+        "owner": "tororex250-ship-it",
+        "repository": "mi-proyecto-n8n",
+        "events": [
+          "issues"
+        ]
+      },
+      "id": "b1a2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+      "name": "GitHub Trigger",
+      "type": "n8n-nodes-base.githubTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "text": "=Resume en español la incidencia de GitHub y clasifícala en prioridad Alta, Media o Baja:\nTítulo: {{ $json.issue.title }}\nDescripción: {{ $json.issue.body }}"
+      },
+      "id": "c2b3a4d5-e6f7-8a9b-0c1d-2e3f4a5b6c7d",
+      "name": "Google Gemini",
+      "type": "n8n-nodes-base.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        480,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1lJ5O4xToBICoIbgSEBxJLxCEjdvRE1H_DzEKOVBdfBk",
+          "mode": "list",
+          "cachedResultName": "Registro_Incidencias"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Hoja 1",
+          "mode": "list",
+          "cachedResultName": "Hoja 1"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ID": "={{ $('GitHub Trigger').item.json.issue.number }}",
+            "Titulo": "={{ $('GitHub Trigger').item.json.issue.title }}",
+            "Estado": "={{ $('GitHub Trigger').item.json.issue.state }}",
+            "Autor": "={{ $('GitHub Trigger').item.json.issue.user.login }}",
+            "Fecha": "={{ $now.format('yyyy-MM-dd') }}",
+            "Analisis_IA": "={{ $json.candidates[0].content.parts[0].text }}"
+          }
+        }
+      },
+      "id": "d3c4b5a6-e7f8-9a0b-1c2d-3e4f5a6b7c8d",
+      "name": "Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        700,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "GitHub Trigger": {
+      "main": [
+        [
+          {
+            "node": "Google Gemini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
