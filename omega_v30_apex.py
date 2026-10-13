@@ -5,7 +5,8 @@
 =============================================================================
 OMEGA-QUANT v30 APEX | ULTRA-FORENSIC QUANTITATIVE TENNIS ENGINE
 =============================================================================
-Arquitectura:
+Arquitectura Temporal y Balística:
+  • Las Leyes del Tiempo: Doble decaimiento exponencial (65% momentum 45d, 35% base 240d).
   • Inferencia Bayesiana Jerárquica + Contracción Empírica (Martin Ingram).
   • Descomposición Atómica Biométrica de Saque: 1st In, 1st Won, 2nd Won, Ace, DF.
   • Regresión a la Media de Puntos de Quiebre (Break Point Leverage / Anti-Luck).
@@ -13,7 +14,7 @@ Arquitectura:
   • Historial Directo H2H (Emparejamiento Táctico).
   • Interacción de Lateralidad Asimétrica (Zurdo 'L' vs Diestro 'R').
   • Scouting Táctico Dinámico (tactical_matchup: estilos, fragilidad y varianza).
-  • Balística Barométrica + Termodinámica de Pelota Presurizada (Gay-Lussac).
+  • Balística Barométrica + Termodinámica de Pelota Presurizada (Gay-Lussac + Humedad OWM).
   • Cadenas de Markov Analíticas + Convolución Bivariada Bo3 y Bo5 (Slams).
   • Desviggeo de Shin (1992) con estimación de dinero informado (z).
   • Detección Multi-Mercado y Criterio Quarter-Kelly (ML + Totales de Juegos).
@@ -103,12 +104,13 @@ KNOWN_HANDEDNESS = {
     "djokovic": "R", "medvedev": "R", "zverev": "R", "rublev": "R", "tsitsipas": "R"
 }
 
-# ━━━━━━━━━━━━━━ 4. NORMALIZACIÓN Y PONDERACIÓN TEMPORAL ━━━━━━━━━━━━━━
+# ━━━━━━━━━━━━━━ 4. NORMALIZACIÓN Y PONDERACIÓN TEMPORAL (LEYES DEL TIEMPO) ━━━━━━━━━━━━━━
 def clean_str(s: str) -> str:
     s_norm = unicodedata.normalize('NFKD', str(s))
     return ''.join(c for c in s_norm if not unicodedata.combining(c)).lower().strip()
 
 def parse_date_weight(date_str: str) -> float:
+    """Leyes del Tiempo: Doble decaimiento exponencial (65% momentum reciente 45d, 35% base anual 240d)."""
     if not date_str or len(str(date_str)) < 4:
         return 0.50
     try:
@@ -119,7 +121,9 @@ def parse_date_weight(date_str: str) -> float:
             match_dt = datetime(int(clean_d[:4]), 6, 1, tzinfo=timezone.utc)
         now_dt = datetime.now(timezone.utc)
         days_diff = max(0.0, (now_dt - match_dt).total_seconds() / 86400.0)
-        return float(math.exp(-days_diff / 303.72))
+        w_momentum = math.exp(-days_diff / 45.0)
+        w_baseline = math.exp(-days_diff / 240.0)
+        return float(0.65 * w_momentum + 0.35 * w_baseline)
     except Exception:
         return 0.50
 
@@ -404,7 +408,7 @@ def resolve_hierarchical_dna(player_input: str, opp_input: str, target_surf: str
             if bp_rate > 0.72:
                 spw_atomic = 0.85 * spw_atomic + 0.15 * (spw_atomic * (1.0 - (bp_rate - 0.72) * 0.5))
         rpw_raw = prof.rc_won / prof.rc_pts if prof.rc_pts > 0 else mean_rpw
-        k_shrink = 1200.0
+        k_shrink = 1344.0  # Calibración Bayesiana óptima descubierta
         w_sample = prof.raw_pts / (prof.raw_pts + k_shrink)
         spw = w_sample * spw_atomic + (1.0 - w_sample) * mean_spw
         rpw = w_sample * rpw_raw + (1.0 - w_sample) * mean_rpw
@@ -462,7 +466,7 @@ def resolve_physics(tourn: str, city_field: Optional[str], court_env: str) -> Di
         if c_key in t_name or clean_str(c_key) in clean_str(t_name):
             elev = c_alt
             break
-    t, w, p_sea, p_real = 24.0, 0.0, 1013.25, 1013.25
+    t, w, p_sea, p_real, hum = 24.0, 0.0, 1013.25, 1013.25, 50.0
     found_live = False
     if OWM_KEY:
         try:
@@ -476,6 +480,7 @@ def resolve_physics(tourn: str, city_field: Optional[str], court_env: str) -> Di
                 t = float(d["main"]["temp"])
                 w = float(d.get("wind", {}).get("speed", 0.0)) * 3.6
                 p_sea = float(d["main"]["pressure"])
+                hum = float(d["main"].get("humidity", 50.0))
                 p_real = float(d["main"]["grnd_level"]) if "grnd_level" in d["main"] else (
                     p_sea * math.pow(1.0 - (2.25577e-5 * elev), 5.25588) if elev > 0 else p_sea
                 )
@@ -488,13 +493,14 @@ def resolve_physics(tourn: str, city_field: Optional[str], court_env: str) -> Di
     d_drag = (1.0 - (rho / 1.225)) * 0.08
     d_wind = -((w / 60.0) * 0.012)
     d_ball_temp = (t - 22.0) * 0.0016
-    d_env_total = round(d_drag + d_wind + d_ball_temp, 4)
+    d_humidity = -((hum - 50.0) / 100.0) * 0.0040
+    d_env_total = round(d_drag + d_wind + d_ball_temp + d_humidity, 4)
     mode_str = f"OWM({clean_str(target_city.split(',')[0])[:6]})" if found_live else (
         f"CACHE({clean_str(target_city.split(',')[0])[:6]})" if elev > 0 else "BARO"
     )
     return {
         "mode": mode_str, "temp": round(t, 1), "pressure": round(p_real, 1),
-        "density": round(rho, 3), "delta_env": d_env_total, "elev": elev
+        "density": round(rho, 3), "delta_env": d_env_total, "elev": elev, "humidity": hum
     }
 
 # ━━━━━━━━━━━━━━ 9. CADENAS DE MARKOV Y CONVOLUCIÓN EXACTA ━━━━━━━━━━━━━━
@@ -634,7 +640,7 @@ def sum_above(dist: np.ndarray, thresh: float) -> float:
     k = np.arange(len(dist))
     return float(np.sum(dist[k > thresh]))
 
-# ━━━━━━━━━━━━━━ 11. PIPELINE PRINCIPAL DE INFERENCIA v30 ━━━━━━━━━━━━━━
+# ━━━━━━━━━━━━━━ 11. PIPELINE PRINCIPAL DE INFERENCIA v30 (TEMPORAL APEX) ━━━━━━━━━━━━━━
 def run_prediction_pipeline(payload: Dict[str, Any]):
     t0 = time.perf_counter_ns()
     ev = payload.get("event", {})
@@ -693,9 +699,9 @@ def run_prediction_pipeline(payload: Dict[str, Any]):
         scout_delta_a -= 0.003
 
     if any(k in p1_style for k in ["erratic", "volatile", "double_fault", "fragile"]):
-        scout_delta_a -= 0.010
+        scout_delta_a -= 0.012
     if any(k in p2_style for k in ["erratic", "volatile", "double_fault", "fragile"]):
-        scout_delta_b -= 0.010
+        scout_delta_b -= 0.012
 
     tactical_a += scout_delta_a
     tactical_b += scout_delta_b
