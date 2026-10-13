@@ -1,0 +1,52 @@
+{
+  "event": {
+    "player_1": "Carlos Alcaraz",
+    "player_2": "Ben Shelton",
+    "tour": "ATP",
+    "tournament": "ATP Masters 1000 Cincinnati",
+    "city": "Cincinnati,US",
+    "surface": "Hard",
+    "court_env": "outdoor",
+    "best_of": 3,
+    "tactical_matchup": {
+      "p1_style": "counterpuncher",
+      "p2_style": "aggressive_server",
+      "expected_shape": "balanced_or_asymmetric"
+    }
+  },
+  "market_lines": {
+    "pinnacle": {
+      "moneyline": {
+        "p1": "-220",
+        "p2": "+185"
+      },
+      "games_total": {
+        "line": "22.5"
+      }
+    },
+    "soft": {
+      "moneyline": {
+        "p1": "1.45",
+        "p2": "2.85"
+      },
+      "games_total": {
+        "line": "22.5",
+        "over": "1.95",
+        "under": "1.85"
+      },
+      "set_betting": {
+        "2_0": "2.10",
+        "2_1": "3.80",
+        "0_2": "5.50",
+        "1_2": "6.20"
+      },
+      "combos": {
+        "p1_over": "2.80",
+        "p1_under": "2.60",
+        "p2_over": "4.50",
+        "p2_under": "5.20"
+      }
+    }
+  },
+  "bankroll": 150.0
+}
