@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
 """
 =============================================================================
-OMEGA-QUANT v30 APEX | TEMPORAL ORACLE ENGINE (ZERO-NOISE ARCHITECTURE)
+OMEGA-QUANT v32 ARGON-APEX | UNIFIED SPACETIME & BIOMETRIC TENNIS ORACLE
 =============================================================================
-Todo el motor analítico y las Leyes del Tiempo trabajan bajo el capó:
-  • Leyes del Tiempo: Doble decaimiento exponencial (65% 45d / 35% 240d).
-  • Vector de Momentum Temporal: Compara rendimiento reciente (60d) vs base.
-  • Descomposición Biométrica Completa: 1st In, 1st Won, 2nd Won, Ace%, DF%,
-    Break Point Saved% y Break Point Conversion% (ya no quedan ignorados).
+Arquitectura Unificada (v30 Apex + v32 Argon):
+  • Leyes del Tiempo (Triple Decaimiento): 50% (18d) + 30% (55d) + 20% (240d).
+  • Vector de Aceleración Temporal: Momentum 60d vs Línea Base Histórica.
+  • Telemetría Biométrica Completa: 1st In, 1st Won, 2nd Won, Ace%, DF%,
+    Break Point Save% (Anti-Luck) y Break Point Conversion% al Resto.
   • Matriz Knottenbelt (Oponentes Comunes) + H2H Directo Ponderado por Tiempo.
-  • Termodinámica y Balística (Altitud, Densidad, Viento, Humedad OWM).
-  • Calibración Bidireccional de Markov (Anclaje Moneyline + Línea Totales).
-  • Salida Oráculo Cero-Ruido: Solo muestra LO QUE VA A PASAR y la jugada.
+  • Markov Intra-Set No-Estacionario: Ciclo de Pelotas (7/9j) + Tiebreak Exacto.
+  • Trayectoria 4D (S1 -> S2 -> S3) con Fatiga 72h, Descanso y Deriva Térmica.
+  • Detector Automático de Trampa 50/50 (Auditoría de Mercado Derivado O/U,
+    2-0 vs 2-1 y Combos + Choque de Estilos Counterpuncher vs Striker).
+  • Salida Cero-Ruido (42 cols POCO X6 Pro) + Filtro Institucional Quarter-Kelly.
 =============================================================================
 """
 
@@ -38,40 +39,27 @@ except ImportError:
     HAS_RAPIDFUZZ = False
 
 def bind_to_cortex_a715():
-    if hasattr(os, 'sched_setaffinity'):
+    if hasattr(os, "sched_setaffinity"):
         try:
-            available = os.cpu_count() or 8
-            target_cores = {c for c in (4, 5, 6, 7) if c < available}
-            if target_cores:
-                os.sched_setaffinity(0, target_cores)
+            avail = os.cpu_count() or 8
+            cores = {c for c in (4, 5, 6, 7) if c < avail}
+            if cores:
+                os.sched_setaffinity(0, cores)
         except Exception:
             pass
 
 bind_to_cortex_a715()
 
 W = 42
-SEP = "━" * W
-DIV = "─" * W
-SUB = "╌" * W
-
-C_RST = "\033[0m"
-C_BLD = "\033[1m"
-C_CYN = "\033[1;36m"
-C_GRN = "\033[1;32m"
-C_RED = "\033[1;31m"
-C_YLW = "\033[1;33m"
-C_DIM = "\033[2m"
-
+SEP, DIV, SUB = "━" * W, "─" * W, "╌" * W
+C_RST, C_BLD, C_CYN = "\033[0m", "\033[1m", "\033[1;36m"
+C_GRN, C_RED, C_YLW, C_DIM = "\033[1;32m", "\033[1;31m", "\033[1;33m", "\033[2m"
 ANSI_REGEX = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 
 def pad_line(s: str, width: int = W) -> str:
-    vlen = len(ANSI_REGEX.sub('', s))
-    if vlen >= width:
-        return s
-    return s + " " * (width - vlen)
+    vlen = len(ANSI_REGEX.sub("", s))
+    return s if vlen >= width else s + " " * (width - vlen)
 
-SPORTRADAR_KEY = "SCWUAE6MNuyZqjy3UnoX9jwe8jxDGAYaN7mDYXHw"
-SPORTRADAR_BASE = "https://api.sportradar.com/tennis/trial/v3/en"
 OWM_KEY = "e9217773c7bb714d19cf13dff0e35e72"
 DB_PATH = "sportradar_cache.db"
 
@@ -90,88 +78,74 @@ CITY_ELEVATION_METERS = {
 KNOWN_HANDEDNESS = {
     "nadal": "L", "shapovalov": "L", "norrie": "L", "mannarino": "L",
     "umbert": "L", "shelton": "L", "cerundolo": "L", "juan manuel cerundolo": "L",
-    "albert ramos": "L", "nishioka": "L", "thiago monteiro": "L", "vacherot": "R",
-    "buse": "R", "ignacio buse": "R", "alcaraz": "R", "sinner": "R",
-    "djokovic": "R", "medvedev": "R", "zverev": "R", "rublev": "R", "tsitsipas": "R"
+    "albert ramos": "L", "nishioka": "L", "thiago monteiro": "L", "draper": "L",
+    "tien": "L", "tabilo": "L", "bellucci": "L", "alcaraz": "R", "sinner": "R",
+    "djokovic": "R", "medvedev": "R", "zverev": "R", "rublev": "R",
+    "de minaur": "R", "minaur": "R", "khachanov": "R"
 }
 
-# ━━━━━━━━━━━━━━ 1. LEYES DEL TIEMPO (PESO TEMPORAL CONTINUO) ━━━━━━━━━━━━━━
+# ━━━━━━━━━━━━━━ 1. LEYES DEL TIEMPO (TRIPLE DECAIMIENTO EXPONENCIAL) ━━━━━━━━━━━━━━
 def clean_str(s: str) -> str:
-    s_norm = unicodedata.normalize('NFKD', str(s))
-    return ''.join(c for c in s_norm if not unicodedata.combining(c)).lower().strip()
+    s_norm = unicodedata.normalize("NFKD", str(s))
+    return "".join(c for c in s_norm if not unicodedata.combining(c)).lower().strip()
 
 def parse_date_metrics(date_str: str) -> Tuple[float, float]:
-    """Devuelve (peso_temporal, dias_transcurridos) bajo las Leyes del Tiempo."""
+    """Triple decaimiento temporal: 50% (18d) + 30% (55d) + 20% (240d)."""
     if not date_str or len(str(date_str)) < 4:
-        return 0.50, 180.0
+        return 0.45, 180.0
     try:
         clean_d = str(date_str).replace("-", "").strip()
-        if len(clean_d) >= 8:
-            match_dt = datetime.strptime(clean_d[:8], "%Y%m%d").replace(tzinfo=timezone.utc)
-        else:
-            match_dt = datetime(int(clean_d[:4]), 6, 1, tzinfo=timezone.utc)
-        now_dt = datetime.now(timezone.utc)
-        days_diff = max(0.0, (now_dt - match_dt).total_seconds() / 86400.0)
-        w_momentum = math.exp(-days_diff / 45.0)
-        w_baseline = math.exp(-days_diff / 240.0)
-        return float(0.65 * w_momentum + 0.35 * w_baseline), days_diff
+        match_dt = (
+            datetime.strptime(clean_d[:8], "%Y%m%d").replace(tzinfo=timezone.utc)
+            if len(clean_d) >= 8 else datetime(int(clean_d[:4]), 6, 1, tzinfo=timezone.utc)
+        )
+        days = max(0.0, (datetime.now(timezone.utc) - match_dt).total_seconds() / 86400.0)
+        w = 0.50 * math.exp(-days / 18.0) + 0.30 * math.exp(-days / 55.0) + 0.20 * math.exp(-days / 240.0)
+        return float(w), days
     except Exception:
-        return 0.50, 180.0
+        return 0.45, 180.0
 
 def parse_date_weight(date_str: str) -> float:
     w, _ = parse_date_metrics(date_str)
     return w
 
-# ━━━━━━━━━━━━━━ 2. CACHÉ DE IDENTIDADES EN RAM (RAPIDFUZZ + SQLITE) ━━━━━━━━━━━━━━
+# ━━━━━━━━━━━━━━ 2. CACHÉ DE IDENTIDADES (RAPIDFUZZ + SQLITE) ━━━━━━━━━━━━━━
 PLAYER_INDEX_CACHE: List[str] = []
 
-def get_player_universe() -> List[str]:
-    global PLAYER_INDEX_CACHE
-    if PLAYER_INDEX_CACHE:
-        return PLAYER_INDEX_CACHE
-    names = set()
-    if os.path.exists(DB_PATH):
-        try:
-            with sqlite3.connect(DB_PATH, timeout=0.5) as conn:
-                cur = conn.cursor()
-                cur.execute("SELECT full_name FROM urn_directory")
-                for (n,) in cur.fetchall():
-                    if n:
-                        names.add(n)
-        except Exception:
-            pass
-    for db_f in ["tennis_analytics.db", "omega_39col.db", "tennis_records.db"]:
-        if os.path.exists(db_f):
-            try:
-                with sqlite3.connect(db_f, timeout=0.5) as conn:
-                    cur = conn.cursor()
-                    for tbl in ["matches", "player_aliases"]:
-                        try:
-                            col = "canonical_name" if tbl == "player_aliases" else "winner_name"
-                            cur.execute(f"SELECT DISTINCT {col} FROM {tbl} LIMIT 1500")
-                            for (n,) in cur.fetchall():
-                                if n:
-                                    names.add(n)
-                        except Exception:
-                            pass
-            except Exception:
-                pass
-    PLAYER_INDEX_CACHE = list(names)
-    return PLAYER_INDEX_CACHE
-
 def fuzzy_canonical_name(raw_name: str) -> str:
+    global PLAYER_INDEX_CACHE
     if not HAS_RAPIDFUZZ:
         return raw_name
-    universe = get_player_universe()
-    if not universe:
+    if not PLAYER_INDEX_CACHE:
+        names = set()
+        for db_f in [DB_PATH, "tennis_analytics.db", "omega_39col.db", "tennis_records.db"]:
+            if os.path.exists(db_f):
+                try:
+                    with sqlite3.connect(db_f, timeout=0.5) as conn:
+                        cur = conn.cursor()
+                        for q in [
+                            "SELECT full_name FROM urn_directory",
+                            "SELECT DISTINCT canonical_name FROM player_aliases LIMIT 1500",
+                            "SELECT DISTINCT winner_name FROM matches LIMIT 1500"
+                        ]:
+                            try:
+                                cur.execute(q)
+                                names.update(n for (n,) in cur.fetchall() if n)
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+        PLAYER_INDEX_CACHE = list(names)
+    if not PLAYER_INDEX_CACHE:
         return raw_name
-    best = process.extractOne(raw_name, universe, scorer=fuzz.token_set_ratio, score_cutoff=80.0)
+    best = process.extractOne(raw_name, PLAYER_INDEX_CACHE, scorer=fuzz.token_set_ratio, score_cutoff=80.0)
     return best[0] if best else raw_name
 
-# ━━━━━━━━━━━━━━ 3. INGESTA FORENSE ATÓMICA (ACE/DF/BP/MOMENTUM) ━━━━━━━━━━━━━━
+# ━━━━━━━━━━━━━━ 3. PERFIL BIOMÉTRICO ATÓMICO Y MOMENTUM TEMPORAL ━━━━━━━━━━━━━━
 class PlayerBioProfile:
     def __init__(self):
         self.raw_pts = 0
+        self.raw_bp_faced = 0
         self.surf_pts = 0.0
         self.weight_tot = 0.0
         self.sv_pts = 0.0
@@ -186,21 +160,17 @@ class PlayerBioProfile:
         self.rc_won = 0.0
         self.rc_bp_conv = 0.0
         self.rc_bp_opps = 0.0
-        # Vectores de Momentum Temporal (últimos 60 días vs histórico)
         self.recent_sv_pts = 0.0
         self.recent_sv_won = 0.0
-        self.recent_matches_w = 0.0
-        self.recent_wins_w = 0.0
         self.opponents: Dict[str, List[float]] = {}
         self.h2h_matches = 0
         self.h2h_wins = 0
         self.h2h_weight_wins = 0.0
         self.h2h_weight_tot = 0.0
-        # Tasas computadas
-        self.ace_rate = 0.05
+        self.ace_rate = 0.06
         self.df_rate = 0.04
-        self.bp_save_rate = 0.60
-        self.bp_conv_rate = 0.42
+        self.bp_save_rate = 0.62
+        self.bp_conv_rate = 0.41
         self.temporal_momentum = 0.0
 
 def detect_handedness(player_name: str, files: List[str]) -> str:
@@ -211,388 +181,282 @@ def detect_handedness(player_name: str, files: List[str]) -> str:
     last_name = clean_p.split()[-1] if clean_p else ""
     for path in sorted(files)[:3]:
         try:
-            with open(path, mode='r', encoding='utf-8', errors='ignore') as f:
-                header = f.readline().lower()
-                cols = [c.strip() for c in header.split(",")]
-                w_idx = cols.index("winner_name") if "winner_name" in cols else -1
-                l_idx = cols.index("loser_name") if "loser_name" in cols else -1
-                wh_idx = cols.index("winner_hand") if "winner_hand" in cols else -1
-                lh_idx = cols.index("loser_hand") if "loser_hand" in cols else -1
-                if (w_idx != -1 and wh_idx != -1) or (l_idx != -1 and lh_idx != -1):
-                    for line in f:
-                        if last_name in line.lower():
-                            parts = line.split(",")
-                            if w_idx != -1 and wh_idx != -1 and len(parts) > max(w_idx, wh_idx):
-                                if last_name in parts[w_idx].lower() and parts[wh_idx].strip() in ("L", "R"):
-                                    return parts[wh_idx].strip()
-                            if l_idx != -1 and lh_idx != -1 and len(parts) > max(l_idx, lh_idx):
-                                if last_name in parts[l_idx].lower() and parts[lh_idx].strip() in ("L", "R"):
-                                    return parts[lh_idx].strip()
+            with open(path, mode="r", encoding="utf-8", errors="ignore") as f:
+                cols = [c.strip() for c in f.readline().lower().split(",")]
+                w_i = cols.index("winner_name") if "winner_name" in cols else -1
+                l_i = cols.index("loser_name") if "loser_name" in cols else -1
+                wh_i = cols.index("winner_hand") if "winner_hand" in cols else -1
+                lh_i = cols.index("loser_hand") if "loser_hand" in cols else -1
+                for line in f:
+                    if last_name in line.lower():
+                        p = line.split(",")
+                        if w_i != -1 and wh_i != -1 and len(p) > max(w_i, wh_i) and last_name in p[w_i].lower():
+                            if p[wh_i].strip() in ("L", "R"):
+                                return p[wh_i].strip()
+                        if l_i != -1 and lh_i != -1 and len(p) > max(l_i, lh_i) and last_name in p[l_i].lower():
+                            if p[lh_i].strip() in ("L", "R"):
+                                return p[lh_i].strip()
         except Exception:
             continue
     return "R"
 
 def scan_atomic_profile(files: List[str], target_player: str, opp_player: str, target_surf: str) -> Optional[PlayerBioProfile]:
-    canonical = fuzzy_canonical_name(target_player)
-    tokens = clean_str(canonical).split()
+    tokens = clean_str(fuzzy_canonical_name(target_player)).split()
     if not tokens:
         return None
-    last_name = tokens[-1]
-    first_init = tokens[0][0] if len(tokens[0]) > 0 else ""
+    last_name, first_init = tokens[-1], (tokens[0][0] if tokens[0] else "")
     opp_last = clean_str(fuzzy_canonical_name(opp_player)).split()[-1] if opp_player else ""
-    profile = PlayerBioProfile()
+    prof = PlayerBioProfile()
     surf_filter = target_surf.lower()
+
     for path in sorted(files):
         try:
-            with open(path, mode='r', encoding='utf-8', errors='ignore') as f:
+            with open(path, mode="r", encoding="utf-8", errors="ignore") as f:
                 header = f.readline()
                 if not header:
                     continue
                 cols = [c.strip().lower() for c in header.split(",")]
-                try:
-                    w_idx = cols.index("winner_name")
-                    l_idx = cols.index("loser_name")
-                    s_idx = cols.index("surface") if "surface" in cols else -1
-                    d_idx = cols.index("tourney_date") if "tourney_date" in cols else -1
-                    ws_idx = cols.index("w_svpt") if "w_svpt" in cols else -1
-                    w1i_idx = cols.index("w_1stin") if "w_1stin" in cols else -1
-                    w1w_idx = cols.index("w_1stwon") if "w_1stwon" in cols else -1
-                    w2w_idx = cols.index("w_2ndwon") if "w_2ndwon" in cols else -1
-                    wace_idx = cols.index("w_ace") if "w_ace" in cols else -1
-                    wdf_idx = cols.index("w_df") if "w_df" in cols else -1
-                    wbps_idx = cols.index("w_bpsaved") if "w_bpsaved" in cols else -1
-                    wbpf_idx = cols.index("w_bpfaced") if "w_bpfaced" in cols else -1
-                    ls_idx = cols.index("l_svpt") if "l_svpt" in cols else -1
-                    l1i_idx = cols.index("l_1stin") if "l_1stin" in cols else -1
-                    l1w_idx = cols.index("l_1stwon") if "l_1stwon" in cols else -1
-                    l2w_idx = cols.index("l_2ndwon") if "l_2ndwon" in cols else -1
-                    lace_idx = cols.index("l_ace") if "l_ace" in cols else -1
-                    ldf_idx = cols.index("l_df") if "l_df" in cols else -1
-                    lbps_idx = cols.index("l_bpsaved") if "l_bpsaved" in cols else -1
-                    lbpf_idx = cols.index("l_bpfaced") if "l_bpfaced" in cols else -1
-                except ValueError:
+                idx = {k: (cols.index(k) if k in cols else -1) for k in [
+                    "winner_name", "loser_name", "surface", "tourney_date",
+                    "w_svpt", "w_1stin", "w_1stwon", "w_2ndwon", "w_ace", "w_df", "w_bpsaved", "w_bpfaced",
+                    "l_svpt", "l_1stin", "l_1stwon", "l_2ndwon", "l_ace", "l_df", "l_bpsaved", "l_bpfaced"
+                ]}
+                if idx["winner_name"] == -1 or idx["loser_name"] == -1 or idx["w_svpt"] == -1 or idx["l_svpt"] == -1:
                     continue
                 for line in f:
-                    line_l = line.lower()
-                    if last_name not in line_l:
+                    if last_name not in line.lower():
                         continue
-                    parts = line.split(",")
-                    if len(parts) <= max(w_idx, l_idx, ws_idx, ls_idx):
+                    p = line.split(",")
+                    if len(p) <= max(idx["w_svpt"], idx["l_svpt"]):
                         continue
-                    w_clean = clean_str(parts[w_idx])
-                    l_clean = clean_str(parts[l_idx])
-                    is_winner = last_name in w_clean and (first_init == "" or first_init in w_clean)
-                    is_loser = last_name in l_clean and (first_init == "" or first_init in l_clean)
-                    if not is_winner and not is_loser:
+                    w_c, l_c = clean_str(p[idx["winner_name"]]), clean_str(p[idx["loser_name"]])
+                    is_w = last_name in w_c and (not first_init or first_init in w_c)
+                    is_l = last_name in l_c and (not first_init or first_init in l_c)
+                    if not is_w and not is_l:
                         continue
-                    d_str = parts[d_idx] if d_idx != -1 else ""
-                    t_w, days_ago = parse_date_metrics(d_str)
-                    r_surf = parts[s_idx].lower() if s_idx != -1 else ""
-                    is_target_surf = (surf_filter in r_surf or not r_surf)
-                    surf_w = 1.0 if is_target_surf else 0.22
-                    weight = t_w * surf_w
                     try:
-                        w_s = float(parts[ws_idx]) if ws_idx != -1 and parts[ws_idx] else 0.0
-                        l_s = float(parts[ls_idx]) if ls_idx != -1 and parts[ls_idx] else 0.0
-                        if w_s <= 0 or l_s <= 0:
+                        ws, ls = float(p[idx["w_svpt"]] or 0), float(p[idx["l_svpt"]] or 0)
+                        if ws <= 0 or ls <= 0:
                             continue
-                        w_1i = float(parts[w1i_idx]) if w1i_idx != -1 and parts[w1i_idx] else 0.0
-                        w_1w = float(parts[w1w_idx]) if w1w_idx != -1 and parts[w1w_idx] else 0.0
-                        w_2w = float(parts[w2w_idx]) if w2w_idx != -1 and parts[w2w_idx] else 0.0
-                        w_ac = float(parts[wace_idx]) if wace_idx != -1 and parts[wace_idx] else 0.0
-                        w_df = float(parts[wdf_idx]) if wdf_idx != -1 and parts[wdf_idx] else 0.0
-                        w_bps = float(parts[wbps_idx]) if wbps_idx != -1 and parts[wbps_idx] else 0.0
-                        w_bpf = float(parts[wbpf_idx]) if wbpf_idx != -1 and parts[wbpf_idx] else 0.0
-                        l_1i = float(parts[l1i_idx]) if l1i_idx != -1 and parts[l1i_idx] else 0.0
-                        l_1w = float(parts[l1w_idx]) if l1w_idx != -1 and parts[l1w_idx] else 0.0
-                        l_2w = float(parts[l2w_idx]) if l2w_idx != -1 and parts[l2w_idx] else 0.0
-                        l_ac = float(parts[lace_idx]) if lace_idx != -1 and parts[lace_idx] else 0.0
-                        l_df = float(parts[ldf_idx]) if ldf_idx != -1 and parts[ldf_idx] else 0.0
-                        l_bps = float(parts[lbps_idx]) if lbps_idx != -1 and parts[lbps_idx] else 0.0
-                        l_bpf = float(parts[lbpf_idx]) if lbpf_idx != -1 and parts[lbpf_idx] else 0.0
+                        w1i, w1w, w2w = float(p[idx["w_1stin"]] or 0), float(p[idx["w_1stwon"]] or 0), float(p[idx["w_2ndwon"]] or 0)
+                        wac = float(p[idx["w_ace"]] or 0) if idx["w_ace"] != -1 else 0.0
+                        wdf = float(p[idx["w_df"]] or 0) if idx["w_df"] != -1 else 0.0
+                        wbps, wbpf = float(p[idx["w_bpsaved"]] or 0), float(p[idx["w_bpfaced"]] or 0)
+                        l1i, l1w, l2w = float(p[idx["l_1stin"]] or 0), float(p[idx["l_1stwon"]] or 0), float(p[idx["l_2ndwon"]] or 0)
+                        lac = float(p[idx["l_ace"]] or 0) if idx["l_ace"] != -1 else 0.0
+                        ldf = float(p[idx["l_df"]] or 0) if idx["l_df"] != -1 else 0.0
+                        lbps, lbpf = float(p[idx["l_bpsaved"]] or 0), float(p[idx["l_bpfaced"]] or 0)
                     except ValueError:
                         continue
-                    if is_winner:
-                        opp_id = l_clean.split()[-1]
-                        profile.sv_pts += w_s * weight
-                        profile.sv_1st_in += w_1i * weight
-                        profile.sv_1st_won += w_1w * weight
-                        profile.sv_2nd_won += w_2w * weight
-                        profile.sv_aces += w_ac * weight
-                        profile.sv_dfs += w_df * weight
-                        profile.sv_bp_saved += w_bps * weight
-                        profile.sv_bp_faced += w_bpf * weight
-                        profile.rc_pts += l_s * weight
-                        profile.rc_won += (l_s - (l_1w + l_2w)) * weight
-                        profile.rc_bp_conv += (l_bpf - l_bps) * weight
-                        profile.rc_bp_opps += l_bpf * weight
-                        profile.raw_pts += int(w_s)
-                        if days_ago <= 75.0:
-                            profile.recent_sv_pts += w_s * surf_w
-                            profile.recent_sv_won += (w_1w + w_2w) * surf_w
-                            profile.recent_matches_w += surf_w
-                            profile.recent_wins_w += surf_w
-                        if is_target_surf:
-                            profile.surf_pts += w_s
-                        profile.weight_tot += weight
-                        if opp_id not in profile.opponents:
-                            profile.opponents[opp_id] = [0.0, 0.0, 0]
-                        profile.opponents[opp_id][0] += ((w_1w + w_2w) / w_s) * weight
-                        profile.opponents[opp_id][1] += weight
-                        profile.opponents[opp_id][2] += int(w_s)
-                        if opp_last and opp_last in l_clean:
-                            profile.h2h_matches += 1
-                            profile.h2h_wins += 1
-                            profile.h2h_weight_wins += t_w
-                            profile.h2h_weight_tot += t_w
-                    elif is_loser:
-                        opp_id = w_clean.split()[-1]
-                        profile.sv_pts += l_s * weight
-                        profile.sv_1st_in += l_1i * weight
-                        profile.sv_1st_won += l_1w * weight
-                        profile.sv_2nd_won += l_2w * weight
-                        profile.sv_aces += l_ac * weight
-                        profile.sv_dfs += l_df * weight
-                        profile.sv_bp_saved += l_bps * weight
-                        profile.sv_bp_faced += l_bpf * weight
-                        profile.rc_pts += w_s * weight
-                        profile.rc_won += (w_s - (w_1w + w_2w)) * weight
-                        profile.rc_bp_conv += (w_bpf - w_bps) * weight
-                        profile.rc_bp_opps += w_bpf * weight
-                        profile.raw_pts += int(l_s)
-                        if days_ago <= 75.0:
-                            profile.recent_sv_pts += l_s * surf_w
-                            profile.recent_sv_won += (l_1w + l_2w) * surf_w
-                            profile.recent_matches_w += surf_w
-                        if is_target_surf:
-                            profile.surf_pts += l_s
-                        profile.weight_tot += weight
-                        if opp_id not in profile.opponents:
-                            profile.opponents[opp_id] = [0.0, 0.0, 0]
-                        profile.opponents[opp_id][0] += ((l_1w + l_2w) / l_s) * weight
-                        profile.opponents[opp_id][1] += weight
-                        profile.opponents[opp_id][2] += int(l_s)
-                        if opp_last and opp_last in w_clean:
-                            profile.h2h_matches += 1
-                            profile.h2h_weight_tot += t_w
+
+                    t_w, days_ago = parse_date_metrics(p[idx["tourney_date"]] if idx["tourney_date"] != -1 else "")
+                    r_surf = p[idx["surface"]].lower() if idx["surface"] != -1 else ""
+                    is_surf = (surf_filter in r_surf or not r_surf)
+                    surf_w = 1.0 if is_surf else 0.22
+                    weight = t_w * surf_w
+
+                    my_s, my_1i, my_1w, my_2w, my_ac, my_df, my_bps, my_bpf = (
+                        (ws, w1i, w1w, w2w, wac, wdf, wbps, wbpf) if is_w else (ls, l1i, l1w, l2w, lac, ldf, lbps, lbpf)
+                    )
+                    op_s, op_1w, op_2w, op_bps, op_bpf, op_c = (
+                        (ls, l1w, l2w, lbps, lbpf, l_c) if is_w else (ws, w1w, w2w, wbps, wbpf, w_c)
+                    )
+
+                    prof.sv_pts += my_s * weight
+                    prof.sv_1st_in += my_1i * weight
+                    prof.sv_1st_won += my_1w * weight
+                    prof.sv_2nd_won += my_2w * weight
+                    prof.sv_aces += my_ac * weight
+                    prof.sv_dfs += my_df * weight
+                    prof.sv_bp_saved += my_bps * weight
+                    prof.sv_bp_faced += my_bpf * weight
+                    prof.raw_bp_faced += int(my_bpf)
+                    prof.rc_pts += op_s * weight
+                    prof.rc_won += (op_s - (op_1w + op_2w)) * weight
+                    prof.rc_bp_conv += max(0.0, op_bpf - op_bps) * weight
+                    prof.rc_bp_opps += op_bpf * weight
+                    prof.raw_pts += int(my_s)
+
+                    if days_ago <= 65.0:
+                        prof.recent_sv_pts += my_s * surf_w
+                        prof.recent_sv_won += (my_1w + my_2w) * surf_w
+
+                    if is_surf:
+                        prof.surf_pts += my_s
+                    prof.weight_tot += weight
+
+                    opp_id = op_c.split()[-1] if op_c else "unk"
+                    if opp_id not in prof.opponents:
+                        prof.opponents[opp_id] = [0.0, 0.0, 0]
+                    prof.opponents[opp_id][0] += ((my_1w + my_2w) / my_s) * weight
+                    prof.opponents[opp_id][1] += weight
+                    prof.opponents[opp_id][2] += int(my_s)
+                    if opp_last and opp_last in op_c:
+                        prof.h2h_matches += 1
+                        prof.h2h_weight_tot += t_w
+                        if is_w:
+                            prof.h2h_wins += 1
+                            prof.h2h_weight_wins += t_w
         except Exception:
             continue
-    if profile.raw_pts >= 40 and profile.sv_pts > 0 and profile.rc_pts > 0:
-        return profile
-    return None
+    return prof if (prof.raw_pts >= 40 and prof.sv_pts > 0 and prof.rc_pts > 0) else None
 
 def get_dataset_files(circuit: str) -> Tuple[List[str], List[str]]:
     pfx = "wta" if circuit == "WTA" else "atp"
-    home_dir = os.path.expanduser("~")
-    candidate_dirs = [
-        os.path.join(home_dir, "tennis_modern"),
-        "/data/data/com.termux/files/home/tennis_modern",
-        f"/tmp/tennis_dataset/tennis_{pfx}",
-        "/tmp/tennis_dataset",
-        os.path.join(home_dir, f"tennis_{pfx}"),
-        "tennis_modern",
-        f"tennis_{pfx}",
-        "."
+    home = os.path.expanduser("~")
+    dirs = [
+        os.path.join(home, "tennis_modern"), "/data/data/com.termux/files/home/tennis_modern",
+        f"/tmp/tennis_dataset/tennis_{pfx}", "/tmp/tennis_dataset",
+        os.path.join(home, f"tennis_{pfx}"), "tennis_modern", f"tennis_{pfx}", "."
     ]
-    main_files = []
-    itf_files = []
-    for d in candidate_dirs:
+    main_f, itf_f = [], []
+    for d in dirs:
         if os.path.isdir(d):
             for pat in [os.path.join(d, f"{pfx}_matches_202*.csv"), os.path.join(d, f"{pfx}_matches_*.csv")]:
                 for f in glob.glob(pat):
                     fl = os.path.basename(f).lower()
-                    if "qual" in fl or "itf" in fl or "chall" in fl or "futures" in fl:
-                        if f not in itf_files:
-                            itf_files.append(f)
-                    else:
-                        if f not in main_files:
-                            main_files.append(f)
-    return main_files, itf_files
+                    target = itf_f if any(k in fl for k in ("qual", "itf", "chall", "futures")) else main_f
+                    if f not in target:
+                        target.append(f)
+    return main_f, itf_f
 
-def resolve_hierarchical_dna(player_input: str, opp_input: str, target_surf: str = "Hard", circuit: Optional[str] = None) -> Tuple[float, float, int, str, str, PlayerBioProfile]:
-    """Soporta tanto llamada de 4 argumentos (motor principal) como de 3 argumentos (scripts de backtest/optuna)."""
-    if circuit is None:
-        # Compatibilidad retroactiva: resolve_hierarchical_dna(player, surf, circuit)
-        circuit_str = str(target_surf).upper()
-        surf_str = str(opp_input)
-        opp_str = ""
-        res = _resolve_dna_core(player_input, opp_str, surf_str, circuit_str)
-        return res[:5]  # type: ignore
-    return _resolve_dna_core(player_input, opp_input, target_surf, circuit)
-
-def _resolve_dna_core(player_input: str, opp_input: str, target_surf: str, circuit: str) -> Tuple[float, float, int, str, str, PlayerBioProfile]:
+def _resolve_dna_core(player_in: str, opp_in: str, surf: str, circuit: str) -> Tuple[float, float, int, str, str, PlayerBioProfile]:
     mean_spw = 0.5750 if circuit == "WTA" else 0.6400
     mean_rpw = 0.4250 if circuit == "WTA" else 0.3600
     mean_ace = 0.042 if circuit == "WTA" else 0.082
     mean_df = 0.048 if circuit == "WTA" else 0.035
     mean_bp_conv = 0.445 if circuit == "WTA" else 0.400
 
-    main_files, itf_files = get_dataset_files(circuit)
-    hand = detect_handedness(player_input, main_files)
-    prof = scan_atomic_profile(main_files, player_input, opp_input, target_surf)
+    main_f, itf_f = get_dataset_files(circuit)
+    hand = detect_handedness(player_in, main_f)
+    prof = scan_atomic_profile(main_f, player_in, opp_in, surf)
     if prof:
         p_1in = prof.sv_1st_in / prof.sv_pts if prof.sv_pts > 0 else 0.62
         p_1w = prof.sv_1st_won / prof.sv_1st_in if prof.sv_1st_in > 0 else 0.70
-        p_2nd_pts = prof.sv_pts - prof.sv_1st_in
-        p_2w = prof.sv_2nd_won / p_2nd_pts if p_2nd_pts > 0 else 0.50
-        spw_atomic = (p_1in * p_1w) + ((1.0 - p_1in) * p_2w)
+        p_2nd = max(1e-6, prof.sv_pts - prof.sv_1st_in)
+        p_2w = prof.sv_2nd_won / p_2nd
+        spw_at = (p_1in * p_1w) + ((1.0 - p_1in) * p_2w)
 
-        # Activar telemetría biométrica real: Aces, Dobles Faltas, Quiebres y Momentum Temporal
         prof.ace_rate = prof.sv_aces / prof.sv_pts if prof.sv_pts > 0 else mean_ace
         prof.df_rate = prof.sv_dfs / prof.sv_pts if prof.sv_pts > 0 else mean_df
-        prof.bp_save_rate = prof.sv_bp_saved / prof.sv_bp_faced if prof.sv_bp_faced >= 15 else 0.60
+        prof.bp_save_rate = prof.sv_bp_saved / prof.sv_bp_faced if prof.sv_bp_faced >= 15 else 0.62
         prof.bp_conv_rate = prof.rc_bp_conv / prof.rc_bp_opps if prof.rc_bp_opps >= 15 else mean_bp_conv
 
-        # Penalización por fragilidad real de 2do saque / exceso de dobles faltas
         df_excess = max(0.0, prof.df_rate - mean_df)
-        ace_bonus = max(-0.008, min(0.010, (prof.ace_rate - mean_ace) * 0.18))
-        spw_atomic = spw_atomic + ace_bonus - (df_excess * 0.22)
+        ace_bonus = max(-0.008, min(0.010, (prof.ace_rate - mean_ace) * 0.16))
+        spw_at = spw_at + ace_bonus - (df_excess * 0.22)
 
-        # Anti-Luck en Break Points salvados
-        if prof.sv_bp_faced >= 20 and prof.bp_save_rate > 0.70:
-            spw_atomic = 0.85 * spw_atomic + 0.15 * (spw_atomic - (prof.bp_save_rate - 0.70) * 0.08)
+        if prof.raw_bp_faced >= 20 and prof.bp_save_rate > 0.72:
+            spw_at = 0.85 * spw_at + 0.15 * (spw_at * (1.0 - (prof.bp_save_rate - 0.72) * 0.5))
 
-        # Vector de Momentum de las Leyes del Tiempo (últimos 75 días vs media histórica)
-        if prof.recent_sv_pts >= 120:
+        if prof.recent_sv_pts >= 100:
             rec_spw = prof.recent_sv_won / prof.recent_sv_pts
-            prof.temporal_momentum = max(-0.018, min(0.018, (rec_spw - spw_atomic) * 0.45))
-            spw_atomic += prof.temporal_momentum
+            prof.temporal_momentum = max(-0.016, min(0.016, (rec_spw - spw_at) * 0.40))
+            spw_at += prof.temporal_momentum
 
         rpw_raw = prof.rc_won / prof.rc_pts if prof.rc_pts > 0 else mean_rpw
-        # Integración de eficacia en conversión de Break Points al resto
         bp_conv_delta = max(-0.010, min(0.010, (prof.bp_conv_rate - mean_bp_conv) * 0.12))
         rpw_raw += bp_conv_delta
 
-        k_shrink = 1344.0
-        w_sample = prof.raw_pts / (prof.raw_pts + k_shrink)
-        spw = w_sample * spw_atomic + (1.0 - w_sample) * mean_spw
-        rpw = w_sample * rpw_raw + (1.0 - w_sample) * mean_rpw
-        return spw, rpw, prof.raw_pts, f"CSV-MAIN ({prof.raw_pts}p)", hand, prof
-
+        w_s = prof.raw_pts / (prof.raw_pts + 1344.0)
+        return (w_s * spw_at + (1.0 - w_s) * mean_spw), (w_s * rpw_raw + (1.0 - w_s) * mean_rpw), prof.raw_pts, f"CSV-MAIN ({prof.raw_pts}p)", hand, prof
     if hand == "R":
-        hand = detect_handedness(player_input, itf_files)
-    prof_itf = scan_atomic_profile(itf_files, player_input, opp_input, target_surf)
+        hand = detect_handedness(player_in, itf_f)
+    prof_itf = scan_atomic_profile(itf_f, player_in, opp_in, surf)
     if prof_itf:
-        spw_raw = (prof_itf.sv_1st_won + prof_itf.sv_2nd_won) / prof_itf.sv_pts
-        rpw_raw = prof_itf.rc_won / prof_itf.rc_pts
-        spw_adj = spw_raw * (0.94 if circuit == "WTA" else 0.95)
-        rpw_adj = rpw_raw * (0.92 if circuit == "WTA" else 0.93)
-        k_shrink = 1500.0
-        w_sample = prof_itf.raw_pts / (prof_itf.raw_pts + k_shrink)
-        spw = w_sample * spw_adj + (1.0 - w_sample) * mean_spw
-        rpw = w_sample * rpw_adj + (1.0 - w_sample) * mean_rpw
-        return spw, rpw, prof_itf.raw_pts, f"CSV-ITF ({prof_itf.raw_pts}p)", hand, prof_itf
+        spw_adj = ((prof_itf.sv_1st_won + prof_itf.sv_2nd_won) / prof_itf.sv_pts) * (0.94 if circuit == "WTA" else 0.95)
+        rpw_adj = (prof_itf.rc_won / prof_itf.rc_pts) * (0.92 if circuit == "WTA" else 0.93)
+        w_s = prof_itf.raw_pts / (prof_itf.raw_pts + 1500.0)
+        return (w_s * spw_adj + (1.0 - w_s) * mean_spw), (w_s * rpw_adj + (1.0 - w_s) * mean_rpw), prof_itf.raw_pts, f"CSV-ITF ({prof_itf.raw_pts}p)", hand, prof_itf
+    return mean_spw, mean_rpw, 0, f"PRIOR-{circuit}", hand, PlayerBioProfile()
 
-    dummy = PlayerBioProfile()
-    return mean_spw, mean_rpw, 0, f"PRIOR-{circuit}", hand, dummy
+def resolve_hierarchical_dna(player_in: str, opp_in: str, surf: str = "Hard", circuit: Optional[str] = None):
+    """Compatibilidad dual: 4 args (motor principal) y 3 args (scripts backtest/optuna)."""
+    if circuit is None:
+        res = _resolve_dna_core(player_in, "", str(opp_in), str(surf).upper())
+        return res[:5]
+    return _resolve_dna_core(player_in, opp_in, surf, circuit)
 
-def compute_common_opponents_delta(prof_a: PlayerBioProfile, prof_b: PlayerBioProfile) -> Tuple[float, int]:
-    opps_a = set(prof_a.opponents.keys())
-    opps_b = set(prof_b.opponents.keys())
-    shared = opps_a.intersection(opps_b)
+def compute_common_opponents_delta(prof_a: PlayerBioProfile, prof_b: PlayerBioProfile) -> float:
+    shared = set(prof_a.opponents.keys()).intersection(prof_b.opponents.keys())
     if not shared:
-        return 0.0, 0
-    delta_accum = 0.0
-    weight_accum = 0.0
-    valid_count = 0
+        return 0.0
+    d_acc, w_acc = 0.0, 0.0
     for opp in shared:
-        spw_a_opp, w_a, pts_a = prof_a.opponents[opp]
-        spw_b_opp, w_b, pts_b = prof_b.opponents[opp]
-        if w_a > 0 and w_b > 0 and (pts_a + pts_b) >= 80:
-            diff = (spw_a_opp / w_a) - (spw_b_opp / w_b)
-            w_pair = math.sqrt(pts_a * pts_b) / 100.0
-            delta_accum += diff * w_pair
-            weight_accum += w_pair
-            valid_count += 1
-    if weight_accum > 0:
-        net_delta = max(-0.025, min(0.025, delta_accum / weight_accum))
-        return net_delta, valid_count
-    return 0.0, 0
+        sa, wa, pa = prof_a.opponents[opp]
+        sb, wb, pb = prof_b.opponents[opp]
+        if wa > 0 and wb > 0 and (pa + pb) >= 80:
+            w_p = math.sqrt(pa * pb) / 100.0
+            d_acc += ((sa / wa) - (sb / wb)) * w_p
+            w_acc += w_p
+    return max(-0.025, min(0.025, d_acc / w_acc)) if w_acc > 0 else 0.0
 
-def resolve_physics(tourn: str, city_field: Optional[str], court_env: str) -> Dict[str, Any]:
-    if court_env.lower() == "indoor":
-        t, p = 21.0, 1013.25
-        rho = (p * 100.0) / (287.058 * (t + 273.15))
-        return {"mode": "INDOOR", "temp": t, "pressure": p, "density": round(rho, 3), "delta_env": 0.0, "elev": 0, "humidity": 50.0}
+def resolve_physics(tourn: str, city_field: Optional[str], court_env: str, session_time: str = "day_heat") -> Dict[str, Any]:
+    if court_env.lower() == "indoor" or session_time.lower() == "indoor":
+        return {"delta_env": 0.0, "thermal_drift": 0.0, "elev": 0}
     target_city = city_field.strip() if city_field else "New York,US"
     elev = 0
-    t_name = clean_str(str(tourn or "") + " " + str(target_city)).upper()
+    t_name = clean_str(f"{tourn} {target_city}").upper()
     for c_key, c_alt in CITY_ELEVATION_METERS.items():
         if c_key in t_name or clean_str(c_key) in clean_str(t_name):
             elev = c_alt
             break
-    t, w, p_sea, p_real, hum = 24.0, 0.0, 1013.25, 1013.25, 50.0
-    found_live = False
+    t, w, p_real, hum = 24.0, 0.0, 1013.25 * math.pow(1.0 - (2.25577e-5 * elev), 5.25588), 50.0
     if OWM_KEY:
         try:
-            r = requests.get(
-                "https://api.openweathermap.org/data/2.5/weather",
-                params={"q": target_city, "appid": OWM_KEY, "units": "metric"},
-                timeout=1.2
-            )
+            r = requests.get("https://api.openweathermap.org/data/2.5/weather", params={"q": target_city, "appid": OWM_KEY, "units": "metric"}, timeout=1.0)
             if r.status_code == 200:
                 d = r.json()
-                t = float(d["main"]["temp"])
-                w = float(d.get("wind", {}).get("speed", 0.0)) * 3.6
+                t, w, hum = float(d["main"]["temp"]), float(d.get("wind", {}).get("speed", 0.0)) * 3.6, float(d["main"].get("humidity", 50.0))
                 p_sea = float(d["main"]["pressure"])
-                hum = float(d["main"].get("humidity", 50.0))
-                p_real = float(d["main"]["grnd_level"]) if "grnd_level" in d["main"] else (
-                    p_sea * math.pow(1.0 - (2.25577e-5 * elev), 5.25588) if elev > 0 else p_sea
-                )
-                found_live = True
+                p_real = float(d["main"].get("grnd_level", p_sea * math.pow(1.0 - (2.25577e-5 * elev), 5.25588)))
         except Exception:
             pass
-    if not found_live:
-        p_real = 1013.25 * math.pow(1.0 - (2.25577e-5 * elev), 5.25588) if elev > 0 else 1013.25
+    st = session_time.lower()
+    thermal_drift = -0.002
+    if "day" in st or "heat" in st:
+        t, hum, thermal_drift = max(t, 26.0), min(hum, 48.0), -0.002
+    elif "twilight" in st:
+        thermal_drift = -0.008
+    elif "night" in st or "slow" in st:
+        t, hum, thermal_drift = min(t, 19.0), max(hum, 68.0), -0.005
     rho = (p_real * 100.0) / (287.058 * (t + 273.15))
-    d_drag = (1.0 - (rho / 1.225)) * 0.08
-    d_wind = -((w / 60.0) * 0.012)
-    d_ball_temp = (t - 22.0) * 0.0016
-    d_humidity = -((hum - 50.0) / 100.0) * 0.0040
-    d_env_total = round(d_drag + d_wind + d_ball_temp + d_humidity, 4)
-    mode_str = f"OWM({clean_str(target_city.split(',')[0])[:6]})" if found_live else (
-        f"CACHE({clean_str(target_city.split(',')[0])[:6]})" if elev > 0 else "BARO"
-    )
-    return {
-        "mode": mode_str, "temp": round(t, 1), "pressure": round(p_real, 1),
-        "density": round(rho, 3), "delta_env": d_env_total, "elev": elev, "humidity": hum
-    }
+    d_env = round((1.0 - (rho / 1.225)) * 0.08 - ((w / 60.0) * 0.012) + (t - 22.0) * 0.0016 - ((hum - 50.0) / 100.0) * 0.0040, 4)
+    return {"delta_env": d_env, "thermal_drift": thermal_drift, "elev": elev}
 
+# ━━━━━━━━━━━━━━ 4. MARKOV INTRA-SET (CICLO DE PELOTAS 7/9) Y TRAYECTORIA 4D ━━━━━━━━━━━━━━
 def markov_hold(p: float) -> float:
     p = max(0.01, min(0.99, p))
     q = 1.0 - p
     denom = p**2 + q**2
     return (p**4) * (1.0 + 4.0 * q + 10.0 * (q**2)) + (20.0 * (p**3) * (q**3) * (p**2 / denom) if denom > 0 else 0.0)
 
-def markov_tiebreak(pa: float, pb: float) -> float:
+def markov_tiebreak(pa: float, pb: float, first_server: int = 0) -> float:
     dp = [[0.0] * 8 for _ in range(8)]
     dp[0][0] = 1.0
     for total in range(12):
         for i in range(min(total + 1, 7)):
             j = total - i
-            if j >= 7 or i >= 7:
+            if j >= 7 or i >= 7 or dp[i][j] <= 0.0:
                 continue
-            prob = dp[i][j]
-            if prob <= 0.0:
-                continue
-            srv_a = (total == 0) or (((total + 1) // 2) % 2 == 1)
+            is_first_srv = (total == 0) or (((total + 1) // 2) % 2 == 1)
+            srv_a = is_first_srv if first_server == 0 else (not is_first_srv)
             p_pt = pa if srv_a else (1.0 - pb)
-            if i + 1 <= 7:
-                dp[i + 1][j] += prob * p_pt
-            if j + 1 <= 7:
-                dp[i][j + 1] += prob * (1.0 - p_pt)
+            dp[i + 1][j] += dp[i][j] * p_pt
+            dp[i][j + 1] += dp[i][j] * (1.0 - p_pt)
     p_a_wins = sum(dp[7][j] for j in range(6))
     denom = (pa * (1.0 - pb)) + ((1.0 - pa) * pb)
     return p_a_wins + dp[6][6] * ((pa * (1.0 - pb)) / denom if denom > 0 else 0.5)
 
-def analytical_set_matrix(pa_srv: float, pb_srv: float) -> Tuple[Dict[Tuple[int, int], float], float]:
-    ga = markov_hold(pa_srv)
-    ha = 1.0 - markov_hold(pb_srv)
+def analytical_set_matrix(pa_srv: float, pb_srv: float, set_num: int = 1) -> Tuple[Dict[Tuple[int, int], float], float]:
     def solve_opener(start_server: int):
         dp = [[[0.0, 0.0] for _ in range(8)] for _ in range(8)]
         dp[0][0][start_server] = 1.0
         final = {}
         for total in range(13):
+            ball_mod = 0.008 if total in (0, 1, 7, 8) else (-0.010 if total in (5, 6, 10, 11) else 0.0)
+            ga = markov_hold(pa_srv + ball_mod)
+            ha = 1.0 - markov_hold(pb_srv + ball_mod)
             for i in range(min(total + 1, 8)):
                 j = total - i
                 if j >= 8:
@@ -605,7 +469,7 @@ def analytical_set_matrix(pa_srv: float, pb_srv: float) -> Tuple[Dict[Tuple[int,
                         final[(i, j)] = final.get((i, j), 0.0) + prob
                         continue
                     if i == 6 and j == 6:
-                        tb = markov_tiebreak(pa_srv, pb_srv)
+                        tb = markov_tiebreak(pa_srv, pb_srv, first_server=start_server)
                         final[(7, 6)] = final.get((7, 6), 0.0) + prob * tb
                         final[(6, 7)] = final.get((6, 7), 0.0) + prob * (1.0 - tb)
                         continue
@@ -616,32 +480,43 @@ def analytical_set_matrix(pa_srv: float, pb_srv: float) -> Tuple[Dict[Tuple[int,
                     if j + 1 <= 7:
                         dp[i][j + 1][ns] += prob * (1.0 - pw)
         return final
-    d0 = solve_opener(0)
-    d1 = solve_opener(1)
-    combined = {k: 0.5 * d0.get(k, 0.0) + 0.5 * d1.get(k, 0.0) for k in set(d0).union(d1)}
-    return combined, sum(prob for (i, j), prob in combined.items() if i > j)
+    d0, d1 = solve_opener(0), solve_opener(1)
+    comb = {k: 0.5 * d0.get(k, 0.0) + 0.5 * d1.get(k, 0.0) for k in set(d0).union(d1)}
+    return comb, sum(prob for (i, j), prob in comb.items() if i > j)
+
+def split_set_games_pmf(set_matrix: Dict[Tuple[int, int], float], is_under_bias: bool) -> Tuple[np.ndarray, np.ndarray]:
+    ga_pmf, gb_pmf = np.zeros(14, dtype=np.float64), np.zeros(14, dtype=np.float64)
+    for (ga, gb), pr in set_matrix.items():
+        g = ga + gb
+        if g < 14:
+            w = (0.58 if g >= 12 else (1.36 if g in (7, 8, 9, 10) else 1.0)) if is_under_bias else 1.0
+            if ga > gb:
+                ga_pmf[g] += pr * w
+            else:
+                gb_pmf[g] += pr * w
+    if np.sum(ga_pmf) > 0:
+        ga_pmf /= np.sum(ga_pmf)
+    if np.sum(gb_pmf) > 0:
+        gb_pmf /= np.sum(gb_pmf)
+    return ga_pmf, gb_pmf
 
 def parse_odds(val: Any) -> Optional[float]:
-    if val is None:
-        return None
-    s = str(val).strip()
-    if not s or s.lower() in ("null", "none"):
+    if val is None or str(val).strip().lower() in ("", "null", "none"):
         return None
     try:
+        s = str(val).strip()
         f = float(s)
         if s.startswith("+") or f >= 100:
             return round(1.0 + (f / 100.0), 4)
-        elif s.startswith("-") or f <= -100:
+        if s.startswith("-") or f <= -100:
             return round(1.0 + (100.0 / abs(f)), 4)
         return round(f, 4)
     except Exception:
         return None
 
 def parse_spread(val: Any) -> Optional[float]:
-    if val is None:
-        return None
     try:
-        return float(str(val).strip().replace("+", ""))
+        return float(str(val).strip().replace("+", "")) if val is not None else None
     except Exception:
         return None
 
@@ -661,13 +536,10 @@ def shin_solve_2way(odd1: float, odd2: float) -> Tuple[float, float, float]:
             low = mid
         else:
             high = mid
-    z = mid
+    z = (low + high) / 2.0
     denom = 2.0 * (1.0 - z)
-    if denom <= 0:
-        return p1 / S, p2 / S, 0.0
-    t1 = math.sqrt(z**2 + 4.0 * (1.0 - z) * (p1**2) / S)
-    t2 = math.sqrt(z**2 + 4.0 * (1.0 - z) * (p2**2) / S)
-    pf1, pf2 = (t1 - z) / denom, (t2 - z) / denom
+    pf1 = (math.sqrt(z**2 + 4.0 * (1.0 - z) * (p1**2) / S) - z) / denom
+    pf2 = (math.sqrt(z**2 + 4.0 * (1.0 - z) * (p2**2) / S) - z) / denom
     tot = pf1 + pf2
     return pf1 / tot, pf2 / tot, z
 
@@ -676,421 +548,383 @@ def prob_to_american(p: float) -> str:
         return "+99900"
     if p >= 0.999:
         return "-99900"
-    if p >= 0.50:
-        return f"-{int(round((p / (1.0 - p)) * 100.0))}"
-    else:
-        return f"+{int(round(((1.0 - p) / p) * 100.0))}"
+    return f"-{int(round((p / (1.0 - p)) * 100.0))}" if p >= 0.50 else f"+{int(round(((1.0 - p) / p) * 100.0))}"
 
 def prob_to_decimal(p: float) -> str:
-    p = max(0.001, min(0.999, p))
-    return f"{1.0 / p:.2f}"
+    return f"{1.0 / max(0.001, min(0.999, p)):.2f}"
 
 def sum_below(dist: np.ndarray, thresh: float) -> float:
-    k = np.arange(len(dist))
-    return float(np.sum(dist[k < thresh]))
+    return float(np.sum(dist[np.arange(len(dist)) < thresh]))
 
 def sum_above(dist: np.ndarray, thresh: float) -> float:
-    k = np.arange(len(dist))
-    return float(np.sum(dist[k > thresh]))
+    return float(np.sum(dist[np.arange(len(dist)) > thresh]))
 
-# ━━━━━━━━━━━━━━ 4. MOTOR SILENCIOSO + DICTAMEN DE LO QUE VA A PASAR ━━━━━━━━━━━━━━
+def eval_4d_trajectory(bar_p: float, delta_d: float, decay_a: float, decay_b: float, drift: float, best_of: int):
+    # S1: Inicio fresco (sin bonificar erróneamente al jugador más fatigado)
+    pa1 = max(0.35, min(0.82, bar_p + delta_d - 0.25 * decay_a))
+    pb1 = max(0.35, min(0.82, bar_p - delta_d - 0.25 * decay_b))
+    # S2: Desgaste acumulado + deriva térmica
+    pa2 = max(0.35, min(0.82, pa1 - decay_a + 0.5 * drift))
+    pb2 = max(0.35, min(0.82, pb1 - decay_b + 0.5 * drift))
+    # S3: Erosión crítica de 3er set
+    pa3 = max(0.35, min(0.82, pa2 - 1.35 * decay_a + 0.5 * drift))
+    pb3 = max(0.35, min(0.82, pb2 - 1.35 * decay_b + 0.5 * drift))
+
+    m1, ps1 = analytical_set_matrix(pa1, pb1, 1)
+    m2, ps2 = analytical_set_matrix(pa2, pb2, 2)
+    m3, ps3 = analytical_set_matrix(pa3, pb3, 3)
+
+    if best_of == 3:
+        p20a = ps1 * ps2
+        p21a = ps1 * (1.0 - ps2) * ps3 + (1.0 - ps1) * ps2 * ps3
+        p20b = (1.0 - ps1) * (1.0 - ps2)
+        p21b = (1.0 - ps1) * ps2 * (1.0 - ps3) + ps1 * (1.0 - ps2) * (1.0 - ps3)
+        m_win_a = p20a + p21a
+    else:
+        pm = (ps1 + ps2 + ps3) / 3.0
+        m_win_a = 10.0 * (pm**3) - 15.0 * (pm**4) + 6.0 * (pm**5)
+        p20a = p21a = p20b = p21b = 0.0
+    return m_win_a, (pa1, pb1, pa2, pb2, pa3, pb3), (m1, m2, m3), (ps1, ps2, ps3), (p20a, p21a, p20b, p21b)
+
+# ━━━━━━━━━━━━━━ 5. PIPELINE MAESTRO (DETECTOR DE TRAMPA 50/50 + ORÁCULO 4D) ━━━━━━━━━━━━━━
 def run_prediction_pipeline(payload: Dict[str, Any]):
     t0 = time.perf_counter_ns()
     ev = payload.get("event", {})
     market = payload.get("market_lines", {})
-    pinn = market.get("pinnacle", {})
-    soft = market.get("soft", {})
+    pinn, soft = market.get("pinnacle", {}), market.get("soft", {})
     bankroll = float(payload.get("bankroll", 150.0))
 
-    p1_name = ev.get("player_1", "Jugador 1")
-    p2_name = ev.get("player_2", "Jugador 2")
-    tour = ev.get("tour", "ATP").upper()
-    circuit = "WTA" if "WTA" in tour else "ATP"
-    tourn = ev.get("tournament", "Torneo")
-    city_f = ev.get("city")
-    env = str(ev.get("court_env", "outdoor")).lower()
-    surf = ev.get("surface", "Hard")
-    best_of = int(ev.get("best_of", 3))
+    p1_name, p2_name = ev.get("player_1", "Jugador 1"), ev.get("player_2", "Jugador 2")
+    circuit = "WTA" if "WTA" in str(ev.get("tour", "ATP")).upper() else "ATP"
+    tourn, city_f = ev.get("tournament", "Torneo"), ev.get("city")
+    env, session_time = str(ev.get("court_env", "outdoor")).lower(), str(ev.get("session_time", "day_heat")).lower()
+    surf, best_of = ev.get("surface", "Hard"), int(ev.get("best_of", 3))
+    s1, s2 = p1_name.strip().split()[-1][:10], p2_name.strip().split()[-1][:10]
 
-    s1 = p1_name.strip().split()[-1][:10]
-    s2 = p2_name.strip().split()[-1][:10]
+    physics = resolve_physics(tourn, city_f, env, session_time)
+    d_env, drift = physics["delta_env"], physics["thermal_drift"]
 
-    # Procesamiento interno de Balística, ADN, Biometría, Knottenbelt y Leyes del Tiempo
-    physics = resolve_physics(tourn, city_f, env)
-    d_env_base = physics["delta_env"]
-
-    spw_a, rpw_a, pts_a, src_a, hand_a, prof_a = _resolve_dna_core(p1_name, p2_name, surf, circuit)
-    spw_b, rpw_b, pts_b, src_b, hand_b, prof_b = _resolve_dna_core(p2_name, p1_name, surf, circuit)
-    knotten_delta, _ = compute_common_opponents_delta(prof_a, prof_b)
+    spw_a, rpw_a, pts_a, _, hand_a, prof_a = _resolve_dna_core(p1_name, p2_name, surf, circuit)
+    spw_b, rpw_b, pts_b, _, hand_b, prof_b = _resolve_dna_core(p2_name, p1_name, surf, circuit)
+    knotten = compute_common_opponents_delta(prof_a, prof_b)
 
     mean_spw = 0.5750 if circuit == "WTA" else 0.6400
     mean_rpw = 0.4250 if circuit == "WTA" else 0.3600
+    ace_ref = 0.042 if circuit == "WTA" else 0.082
+    ace_f_a = max(0.85, min(1.30, prof_a.ace_rate / ace_ref))
+    ace_f_b = max(0.85, min(1.30, prof_b.ace_rate / ace_ref))
+    boost_a = d_env * math.pow(spw_a / mean_spw, 1.1) * ace_f_a
+    boost_b = d_env * math.pow(spw_b / mean_spw, 1.1) * ace_f_b
 
-    # El boost balístico beneficia más a quien tiene mayor tasa de Aces
-    ace_factor_a = max(0.85, min(1.30, prof_a.ace_rate / (0.042 if circuit == "WTA" else 0.082)))
-    ace_factor_b = max(0.85, min(1.30, prof_b.ace_rate / (0.042 if circuit == "WTA" else 0.082)))
-    boost_a = d_env_base * math.pow(spw_a / mean_spw, 1.1) * ace_factor_a
-    boost_b = d_env_base * math.pow(spw_b / mean_spw, 1.1) * ace_factor_b
+    tac_a = (0.008 if "hard" in surf.lower() else 0.012) if (hand_a == "L" and hand_b == "R") else (-0.005 if (hand_b == "L" and hand_a == "R") else 0.0)
+    tac_b = (0.008 if "hard" in surf.lower() else 0.012) if (hand_b == "L" and hand_a == "R") else (-0.005 if (hand_a == "L" and hand_b == "R") else 0.0)
 
-    tactical_a, tactical_b = 0.0, 0.0
-    if hand_a == "L" and hand_b == "R":
-        tactical_a = 0.008 if "hard" in surf.lower() else 0.012
-        tactical_b = -0.005
-    elif hand_b == "L" and hand_a == "R":
-        tactical_b = 0.008 if "hard" in surf.lower() else 0.012
-        tactical_a = -0.005
+    t_scout = ev.get("tactical_matchup", {})
+    p1_st, p2_st = str(t_scout.get("p1_style", "")).lower(), str(t_scout.get("p2_style", "")).lower()
+    exp_shape, tac_bias = str(t_scout.get("expected_shape", "symmetric")).lower(), str(t_scout.get("bias", "neutral")).lower()
 
-    tactical_scout = ev.get("tactical_matchup", {})
-    p1_style = str(tactical_scout.get("p1_style", "")).lower()
-    p2_style = str(tactical_scout.get("p2_style", "")).lower()
-    exp_shape = str(tactical_scout.get("expected_shape", "symmetric")).lower()
-    tac_bias = str(tactical_scout.get("bias", "neutral")).lower()
+    is_style_clash_a = ("counterpuncher" in p1_st or "defense" in p1_st) and ("aggressive" in p2_st or "server" in p2_st)
+    is_style_clash_b = ("counterpuncher" in p2_st or "defense" in p2_st) and ("aggressive" in p1_st or "server" in p1_st)
 
-    if ("counterpuncher" in p1_style or "defense" in p1_style) and "aggressive" in p2_style:
-        tactical_a += 0.005
-        tactical_b -= 0.004
-    elif ("counterpuncher" in p2_style or "defense" in p2_style) and "aggressive" in p1_style:
-        tactical_b += 0.005
-        tactical_a -= 0.004
+    if is_style_clash_a:
+        tac_a += 0.006; tac_b -= 0.005
+    elif is_style_clash_b:
+        tac_b += 0.006; tac_a -= 0.005
 
-    if any(k in p1_style for k in ["erratic", "volatile", "double_fault", "fragile"]):
-        tactical_a -= 0.012
-    if any(k in p2_style for k in ["erratic", "volatile", "double_fault", "fragile"]):
-        tactical_b -= 0.012
+    if any(k in p1_st for k in ("erratic", "volatile", "double_fault", "fragile")):
+        tac_a -= 0.012
+    if any(k in p2_st for k in ("erratic", "volatile", "double_fault", "fragile")):
+        tac_b -= 0.012
 
-    # H2H ponderado por las Leyes del Tiempo (partidos recientes pesan más que H2H viejos)
-    h2h_boost_a = 0.0
+    tc = ev.get("temporal_coordinates", {})
+    p1_m72, p2_m72 = float(tc.get("p1_mins_72h", 0.0)), float(tc.get("p2_mins_72h", 0.0))
+    p1_rest, p2_rest = float(tc.get("p1_rest_hours", 36.0)), float(tc.get("p2_rest_hours", 36.0))
+    p1_f14 = max(-1.0, min(1.0, float(tc.get("p1_form_14d", 0.0))))
+    p2_f14 = max(-1.0, min(1.0, float(tc.get("p2_form_14d", 0.0))))
+    r_prof = str(tc.get("avg_rally_profile", "medium")).lower()
+    r_mult = 1.35 if "long" in r_prof else (0.80 if "short" in r_prof else 1.0)
+
+    def calc_decay(m72: float, rest: float, st: str) -> float:
+        load = max(0.0, (m72 - 80.0) / 150.0) * 0.014
+        r_pen = max(0.0, (26.0 - rest) / 10.0) * 0.009 if rest < 26.0 else 0.0
+        s_burn = 0.005 if any(k in st for k in ("server", "aggressive", "erratic", "fragile")) else 0.0015
+        return (load + r_pen + s_burn) * r_mult
+
+    decay_a, decay_b = calc_decay(p1_m72, p1_rest, p1_st), calc_decay(p2_m72, p2_rest, p2_st)
+
+    # Ventaja por diferencial de fatiga 72h y forma de 14 días (aplicada desde el inicio)
+    fatigue_edge_a = (decay_b - decay_a) * 1.40
+    form_edge_a = (p1_f14 - p2_f14) * 0.035
+
+    h2h_a = 0.0
     if prof_a.h2h_weight_tot > 0:
-        h2h_win_rate = prof_a.h2h_weight_wins / prof_a.h2h_weight_tot
-        h2h_boost_a = (h2h_win_rate - 0.50) * min(0.022, 0.007 * prof_a.h2h_matches)
+        h2h_a = ((prof_a.h2h_weight_wins / prof_a.h2h_weight_tot) - 0.50) * min(0.022, 0.007 * prof_a.h2h_matches)
 
-    pa_base = spw_a - (rpw_b - mean_rpw) + boost_a + tactical_a + knotten_delta + h2h_boost_a
-    pb_base = spw_b - (rpw_a - mean_rpw) + boost_b + tactical_b - knotten_delta - h2h_boost_a
+    pa_base = spw_a - (rpw_b - mean_rpw) + boost_a + tac_a + knotten + h2h_a + (form_edge_a / 2.0) + (fatigue_edge_a / 2.0)
+    pb_base = spw_b - (rpw_a - mean_rpw) + boost_b + tac_b - knotten - h2h_a - (form_edge_a / 2.0) - (fatigue_edge_a / 2.0)
+    lo_b, hi_b = (0.420, 0.680) if circuit == "WTA" else (0.460, 0.760)
+    pa_base, pb_base = min(hi_b, max(lo_b, pa_base)), min(hi_b, max(lo_b, pb_base))
 
-    if circuit == "WTA":
-        pa_base = min(0.680, max(0.420, pa_base))
-        pb_base = min(0.680, max(0.420, pb_base))
-    else:
-        pa_base = min(0.760, max(0.460, pa_base))
-        pb_base = min(0.760, max(0.460, pb_base))
-
+    # ━━━━━━━━━━━━━━ AUDITORÍA FORENSE DE SEÑALES DE MERCADO DERIVADO ━━━━━━━━━━━━━━
     pin_p1 = parse_odds(pinn.get("moneyline", {}).get("p1"))
     pin_p2 = parse_odds(pinn.get("moneyline", {}).get("p2"))
-    tot_pin = pinn.get("games_total", {})
-    tot_line = parse_spread(tot_pin.get("line")) or parse_spread(soft.get("games_total", {}).get("line")) or (38.5 if best_of == 5 else 22.5)
+    tot_line = parse_spread(pinn.get("games_total", {}).get("line")) or parse_spread(soft.get("games_total", {}).get("line")) or (38.5 if best_of == 5 else 22.5)
 
-    # Calibración del baricentro de saque según la línea del mercado y sesgo táctico
+    soft_ov = parse_odds(soft.get("games_total", {}).get("over"))
+    soft_un = parse_odds(soft.get("games_total", {}).get("under"))
+    soft_sb = soft.get("set_betting", {})
+    soft_cb = soft.get("combos", {})
+
+    odd_20 = parse_odds(soft_sb.get("2_0"))
+    odd_21 = parse_odds(soft_sb.get("2_1"))
+    odd_02 = parse_odds(soft_sb.get("0_2"))
+    odd_12 = parse_odds(soft_sb.get("1_2"))
+    odd_p1_ov = parse_odds(soft_cb.get("p1_over"))
+    odd_p1_un = parse_odds(soft_cb.get("p1_under"))
+    odd_p2_ov = parse_odds(soft_cb.get("p2_over"))
+    odd_p2_un = parse_odds(soft_cb.get("p2_under"))
+
+    # Detectar si las cuotas derivadas (Under, 2-0, Combos) revelan asimetría Under aunque el JSON diga "over"
+    mkt_under_signals = 0
+    if soft_un and soft_ov and soft_un < soft_ov:
+        mkt_under_signals += 1
+    if odd_p1_un and odd_p1_ov and odd_p1_un < odd_p1_ov:
+        mkt_under_signals += 1
+    if odd_20 and odd_21 and (odd_21 - odd_20) >= 0.85:
+        mkt_under_signals += 1
+    if is_style_clash_a or is_style_clash_b or ("long" in r_prof and abs(p1_m72 - p2_m72) >= 20):
+        mkt_under_signals += 1
+
+    # Si hay >=2 señales estructurales de Under/Sets Corridos, se anula la trampa 50/50 de Over
+    auto_under_override = (mkt_under_signals >= 2)
+    is_under_bias = ("under" in tac_bias or "asymmetric" in exp_shape or auto_under_override)
+
+    # Calibración del baricentro de saque (evitando inflar Holds a 85% por líneas de 23.5)
     bar_p = (pa_base + pb_base) / 2.0
-    ref_line = 38.5 if best_of == 5 else (21.0 if circuit == "WTA" else 22.5)
-    line_shift = (tot_line - ref_line) * 0.008
-    bar_p = max(0.46, min(0.74, bar_p + line_shift))
+    if is_under_bias:
+        bar_p = max(0.48, bar_p - (0.018 if circuit == "WTA" else 0.024))
+    elif "over" in tac_bias and not auto_under_override:
+        bar_p = min(0.71, bar_p + 0.010)
 
-    if "under" in tac_bias or "asymmetric" in exp_shape:
-        bar_p = max(0.46, bar_p - (0.016 if circuit == "WTA" else 0.020))
-    elif "over" in tac_bias or "tiebreak" in exp_shape:
-        bar_p = min(0.74, bar_p + 0.014)
+    raw_delta = (pa_base - pb_base) / 2.0
+    p_match_raw, _, _, _, _ = eval_4d_trajectory(bar_p, raw_delta, decay_a, decay_b, drift, best_of)
 
-    # Bisección Exacta de Markov (28 iteraciones)
+    # Probabilidad implícita en mercados derivados de Sets (2-0/2-1 vs 0-2/1-2)
+    p_deriv_a = None
+    if odd_20 and odd_21 and odd_02 and odd_12:
+        inv_a = (1.0 / odd_20) + (1.0 / odd_21)
+        inv_b = (1.0 / odd_02) + (1.0 / odd_12)
+        if (inv_a + inv_b) > 0:
+            p_deriv_a = inv_a / (inv_a + inv_b)
+
     if pin_p1 and pin_p2:
         p_shin_a, _, _ = shin_solve_2way(pin_p1, pin_p2)
-        _, p_set_a_raw = analytical_set_matrix(pa_base, pb_base)
-        p_match_a_raw = (
-            10.0 * (p_set_a_raw**3) - 15.0 * (p_set_a_raw**4) + 6.0 * (p_set_a_raw**5)
-            if best_of == 5 else
-            3.0 * (p_set_a_raw**2) - 2.0 * (p_set_a_raw**3)
-        )
+        if p_deriv_a is not None:
+            p_shin_a = 0.75 * p_shin_a + 0.25 * p_deriv_a
+
         min_pts = min(pts_a, pts_b)
-        w_micro = min(0.35, 0.08 + 0.27 * (min_pts / 6000.0)) if min_pts > 0 else 0.08
-        p_target_a = (1.0 - w_micro) * p_shin_a + w_micro * p_match_a_raw
+        w_micro = min(0.45, 0.16 + 0.29 * (min_pts / 6000.0)) if min_pts > 0 else 0.20
+        # Cuando hay divergencia fuerte en fatiga 72h, forma 14d o choque táctico, el Oráculo toma el mando
+        if abs(decay_a - decay_b) >= 0.004 or abs(p1_f14 - p2_f14) >= 0.08 or is_style_clash_a or is_style_clash_b:
+            w_micro = max(w_micro, 0.52)
 
-        low_s, high_s = 0.001, 0.999
-        for _ in range(28):
-            mid_s = (low_s + high_s) / 2.0
-            m_eval = (
-                10.0 * (mid_s**3) - 15.0 * (mid_s**4) + 6.0 * (mid_s**5)
-                if best_of == 5 else
-                3.0 * (mid_s**2) - 2.0 * (mid_s**3)
-            )
-            if m_eval < p_target_a:
-                low_s = mid_s
-            else:
-                high_s = mid_s
-        s_target = (low_s + high_s) / 2.0
-
+        p_target_a = (1.0 - w_micro) * p_shin_a + w_micro * p_match_raw
         low_d, high_d = -0.25, 0.25
         for _ in range(28):
             mid_d = (low_d + high_d) / 2.0
-            pa_t = max(0.35, min(0.82, bar_p + mid_d))
-            pb_t = max(0.35, min(0.82, bar_p - mid_d))
-            _, p_eval = analytical_set_matrix(pa_t, pb_t)
-            if p_eval < s_target:
+            m_ev, _, _, _, _ = eval_4d_trajectory(bar_p, mid_d, decay_a, decay_b, drift, best_of)
+            if m_ev < p_target_a:
                 low_d = mid_d
             else:
                 high_d = mid_d
-        mid_d_final = (low_d + high_d) / 2.0
-        pa_final = max(0.35, min(0.82, bar_p + mid_d_final))
-        pb_final = max(0.35, min(0.82, bar_p - mid_d_final))
-        match_win_a = p_target_a
+        final_delta = (low_d + high_d) / 2.0
     else:
-        pa_final = pa_base
-        pb_final = pb_base
-        _, p_set_a_raw = analytical_set_matrix(pa_final, pb_final)
-        match_win_a = (
-            10.0 * (p_set_a_raw**3) - 15.0 * (p_set_a_raw**4) + 6.0 * (p_set_a_raw**5)
-            if best_of == 5 else
-            3.0 * (p_set_a_raw**2) - 2.0 * (p_set_a_raw**3)
-        )
+        final_delta = raw_delta
 
+    match_win_a, srv_tuple, mats, p_sets, raw_2x = eval_4d_trajectory(bar_p, final_delta, decay_a, decay_b, drift, best_of)
     match_win_b = 1.0 - match_win_a
-    set_dist_matrix, p_set_a = analytical_set_matrix(pa_final, pb_final)
-    p_set_b = 1.0 - p_set_a
-    hold_a = markov_hold(pa_final) * 100.0
-    hold_b = markov_hold(pb_final) * 100.0
+    pa_s1, pb_s1, pa_s2, pb_s2, pa_s3, pb_s3 = srv_tuple
+    mat_s1, mat_s2, mat_s3 = mats
+    p_set1_a, p_set2_a, p_set3_a = p_sets
+    p_set1_b, p_set2_b, p_set3_b = 1.0 - p_set1_a, 1.0 - p_set2_a, 1.0 - p_set3_a
+    p_2_0_a_raw, p_2_1_a_raw, p_2_0_b_raw, p_2_1_b_raw = raw_2x
 
+    hold_a = markov_hold((pa_s1 + pa_s2) / 2.0) * 100.0
+    hold_b = markov_hold((pb_s1 + pb_s2) / 2.0) * 100.0
     fav_prob = max(match_win_a, match_win_b)
-    is_under_bias = ("under" in tac_bias or "asymmetric" in exp_shape or fav_prob >= 0.66)
+    if fav_prob >= 0.66:
+        is_under_bias = True
 
-    set_games_a = np.zeros(14, dtype=np.float64)
-    set_games_b = np.zeros(14, dtype=np.float64)
+    s1_ga, s1_gb = split_set_games_pmf(mat_s1, is_under_bias)
+    s2_ga, s2_gb = split_set_games_pmf(mat_s2, is_under_bias)
+    s3_ga, s3_gb = split_set_games_pmf(mat_s3, is_under_bias)
 
-    for (ga, gb), pr in set_dist_matrix.items():
-        g = ga + gb
-        if g < 14:
-            w_adj = (0.68 if g >= 12 else (1.28 if g in (7, 8, 9) else 1.0)) if is_under_bias else 1.0
-            if ga > gb:
-                set_games_a[g] += pr * w_adj
-            else:
-                set_games_b[g] += pr * w_adj
-
-    sum_ga = np.sum(set_games_a)
-    if sum_ga > 0:
-        set_games_a /= sum_ga
-    sum_gb = np.sum(set_games_b)
-    if sum_gb > 0:
-        set_games_b /= sum_gb
-
-    top_s1_label = "6-4"
-    top_s1_prob = 0.0
-    for (i, j), prob in set_dist_matrix.items():
+    top_s1_label, top_s1_prob = "6-4", 0.0
+    for (i, j), prob in mat_s1.items():
         g = i + j
-        w_adj = (0.68 if g >= 12 else (1.28 if g in (7, 8, 9) else 1.0)) if is_under_bias else 1.0
-        p_eff = prob * w_adj
+        p_eff = prob * ((0.58 if g >= 12 else (1.36 if g in (7, 8, 9, 10) else 1.0)) if is_under_bias else 1.0)
         if p_eff > top_s1_prob:
             top_s1_prob = p_eff
-            w_tag = s1 if i > j else s2
-            mx, mn = max(i, j), min(i, j)
-            top_s1_label = f"{mx}-{mn} {w_tag}"
-    norm_s1 = sum(
-        prob * ((0.68 if (i + j) >= 12 else (1.28 if (i + j) in (7, 8, 9) else 1.0)) if is_under_bias else 1.0)
-        for (i, j), prob in set_dist_matrix.items()
-    )
-    if norm_s1 > 0:
-        top_s1_prob /= norm_s1
+            top_s1_label = f"{max(i, j)}-{min(i, j)} {s1 if i > j else s2}"
 
     if best_of == 5:
-        p_3_0_a = p_set_a ** 3
-        p_3_1_a = 3.0 * (p_set_a ** 3) * p_set_b
-        p_3_2_a = 6.0 * (p_set_a ** 3) * (p_set_b ** 2)
-        p_3_0_b = p_set_b ** 3
-        p_3_1_b = 3.0 * (p_set_b ** 3) * p_set_a
-        p_3_2_b = 6.0 * (p_set_b ** 3) * (p_set_a ** 2)
-        tot_b5 = p_3_0_a + p_3_1_a + p_3_2_a + p_3_0_b + p_3_1_b + p_3_2_b
-        p_3_0_a, p_3_1_a, p_3_2_a = p_3_0_a / tot_b5, p_3_1_a / tot_b5, p_3_2_a / tot_b5
-        p_3_0_b, p_3_1_b, p_3_2_b = p_3_0_b / tot_b5, p_3_1_b / tot_b5, p_3_2_b / tot_b5
-        score_sets = [
-            (f"{s1} 3-0", p_3_0_a), (f"{s1} 3-1", p_3_1_a), (f"{s1} 3-2", p_3_2_a),
-            (f"{s2} 3-0", p_3_0_b), (f"{s2} 3-1", p_3_1_b), (f"{s2} 3-2", p_3_2_b)
-        ]
-        c_30_a = np.convolve(np.convolve(set_games_a, set_games_a), set_games_a)
-        c_31_a = np.convolve(c_30_a, set_games_b)
-        c_32_a = np.convolve(c_31_a, set_games_b)
-        c_30_b = np.convolve(np.convolve(set_games_b, set_games_b), set_games_b)
-        c_31_b = np.convolve(c_30_b, set_games_a)
-        c_32_b = np.convolve(c_31_b, set_games_a)
-        tot_max = len(c_32_a)
-        tot_pdf = np.zeros(tot_max, dtype=np.float64)
-        tot_pdf[:len(c_30_a)] += p_3_0_a * c_30_a
-        tot_pdf[:len(c_31_a)] += p_3_1_a * c_31_a
-        tot_pdf[:len(c_32_a)] += p_3_2_a * c_32_a
-        tot_pdf[:len(c_30_b)] += p_3_0_b * c_30_b
-        tot_pdf[:len(c_31_b)] += p_3_1_b * c_31_b
-        tot_pdf[:len(c_32_b)] += p_3_2_b * c_32_b
-        p_3rd = p_3_2_a + p_3_2_b
+        psa = (p_set1_a + p_set2_a + p_set3_a) / 3.0
+        psb = 1.0 - psa
+        p30a, p31a, p32a = psa**3, 3.0 * (psa**3) * psb, 6.0 * (psa**3) * (psb**2)
+        p30b, p31b, p32b = psb**3, 3.0 * (psb**3) * psa, 6.0 * (psb**3) * (psa**2)
+        tb5 = p30a + p31a + p32a + p30b + p31b + p32b
+        p30a, p31a, p32a, p30b, p31b, p32b = p30a/tb5, p31a/tb5, p32a/tb5, p30b/tb5, p31b/tb5, p32b/tb5
+        score_sets = [(f"{s1} 3-0", p30a), (f"{s1} 3-1", p31a), (f"{s1} 3-2", p32a), (f"{s2} 3-0", p30b), (f"{s2} 3-1", p31b), (f"{s2} 3-2", p32b)]
+        c30a = np.convolve(np.convolve(s1_ga, s2_ga), s3_ga)
+        c31a, c32a = np.convolve(c30a, s2_gb), np.convolve(np.convolve(c30a, s2_gb), s3_gb)
+        c30b = np.convolve(np.convolve(s1_gb, s2_gb), s3_gb)
+        c31b, c32b = np.convolve(c30b, s2_ga), np.convolve(np.convolve(c30b, s2_ga), s3_ga)
+        tot_pdf = np.zeros(len(c32a), dtype=np.float64)
+        for c_arr, pr in [(c30a, p30a), (c31a, p31a), (c32a, p32a), (c30b, p30b), (c31b, p31b), (c32b, p32b)]:
+            tot_pdf[:len(c_arr)] += pr * c_arr
+        p_3rd = p32a + p32b
+        p_ov_a = p30a * sum_above(c30a, tot_line) + p31a * sum_above(c31a, tot_line) + p32a * sum_above(c32a, tot_line)
+        p_un_a = p30a * sum_below(c30a, tot_line) + p31a * sum_below(c31a, tot_line) + p32a * sum_below(c32a, tot_line)
+        p_ov_b = p30b * sum_above(c30b, tot_line) + p31b * sum_above(c31b, tot_line) + p32b * sum_above(c32b, tot_line)
+        p_un_b = p30b * sum_below(c30b, tot_line) + p31b * sum_below(c31b, tot_line) + p32b * sum_below(c32b, tot_line)
     else:
-        p_2_1_a_iid = 2.0 * (p_set_a ** 2) * p_set_b
-        p_2_1_b_iid = 2.0 * (p_set_b ** 2) * p_set_a
-
-        k_straight = 0.24 if is_under_bias else 0.06
-        p_2_1_a = p_2_1_a_iid * (1.0 - k_straight)
+        # Compresión anti-trampa 50/50 hacia sets corridos (2-0) conservando suma exacta de ganador
+        k_str = 0.28 if is_under_bias else 0.06
+        p_2_1_a = p_2_1_a_raw * (1.0 - k_str)
         p_2_0_a = max(0.0, match_win_a - p_2_1_a)
-        p_2_1_b = p_2_1_b_iid * (1.0 - k_straight)
+        p_2_1_b = p_2_1_b_raw * (1.0 - k_str)
         p_2_0_b = max(0.0, match_win_b - p_2_1_b)
-
-        score_sets = [
-            (f"{s1} 2-0", p_2_0_a), (f"{s1} 2-1", p_2_1_a),
-            (f"{s2} 2-0", p_2_0_b), (f"{s2} 2-1", p_2_1_b)
-        ]
-        c_20_a = np.convolve(set_games_a, set_games_a)
-        c_21_a = np.convolve(c_20_a, set_games_b)
-        c_20_b = np.convolve(set_games_b, set_games_b)
-        c_21_b = np.convolve(c_20_b, set_games_a)
-        tot_max = len(c_21_a)
-        tot_pdf = np.zeros(tot_max, dtype=np.float64)
-        tot_pdf[:len(c_20_a)] += p_2_0_a * c_20_a
-        tot_pdf[:len(c_21_a)] += p_2_1_a * c_21_a
-        tot_pdf[:len(c_20_b)] += p_2_0_b * c_20_b
-        tot_pdf[:len(c_21_b)] += p_2_1_b * c_21_b
+        score_sets = [(f"{s1} 2-0", p_2_0_a), (f"{s1} 2-1", p_2_1_a), (f"{s2} 2-0", p_2_0_b), (f"{s2} 2-1", p_2_1_b)]
+        c_20_a = np.convolve(s1_ga, s2_ga)
+        c_21_a = 0.5 * np.convolve(np.convolve(s1_ga, s2_gb), s3_ga) + 0.5 * np.convolve(np.convolve(s1_gb, s2_ga), s3_ga)
+        c_20_b = np.convolve(s1_gb, s2_gb)
+        c_21_b = 0.5 * np.convolve(np.convolve(s1_gb, s2_ga), s3_gb) + 0.5 * np.convolve(np.convolve(s1_ga, s2_gb), s3_gb)
+        tot_pdf = np.zeros(len(c_21_a), dtype=np.float64)
+        for c_arr, pr in [(c_20_a, p_2_0_a), (c_21_a, p_2_1_a), (c_20_b, p_2_0_b), (c_21_b, p_2_1_b)]:
+            tot_pdf[:len(c_arr)] += pr * c_arr
         p_3rd = p_2_1_a + p_2_1_b
+        p_ov_a = p_2_0_a * sum_above(c_20_a, tot_line) + p_2_1_a * sum_above(c_21_a, tot_line)
+        p_un_a = p_2_0_a * sum_below(c_20_a, tot_line) + p_2_1_a * sum_below(c_21_a, tot_line)
+        p_ov_b = p_2_0_b * sum_above(c_20_b, tot_line) + p_2_1_b * sum_above(c_21_b, tot_line)
+        p_un_b = p_2_0_b * sum_below(c_20_b, tot_line) + p_2_1_b * sum_below(c_21_b, tot_line)
 
     score_sets.sort(key=lambda x: x[1], reverse=True)
     if np.sum(tot_pdf) > 0:
         tot_pdf /= np.sum(tot_pdf)
 
     exp_total_games = float(np.sum(np.arange(len(tot_pdf)) * tot_pdf))
-    mean_ga_set = sum(ga * prob for (ga, gb), prob in set_dist_matrix.items())
-    mean_gb_set = sum(gb * prob for (ga, gb), prob in set_dist_matrix.items())
-    exp_sets = (2.0 + p_3rd) if best_of == 3 else 3.5
-    exp_margin = abs(mean_ga_set - mean_gb_set) * exp_sets
-
     fav_is_a = match_win_a >= match_win_b
-    fav_name = s1 if fav_is_a else s2
-    dog_name = s2 if fav_is_a else s1
+    fav_name, dog_name = (s1, s2) if fav_is_a else (s2, s1)
+    fav_s1_prob = p_set1_a if fav_is_a else p_set1_b
+    drop_a, drop_b = (p_set3_a - p_set1_a) * 100.0, (p_set3_b - p_set1_b) * 100.0
 
-    po_main = sum_above(tot_pdf, tot_line)
-    pu_main = sum_below(tot_pdf, tot_line)
-    st_main = po_main + pu_main
-    if st_main > 0:
-        po_main /= st_main
-        pu_main /= st_main
-
+    po_main, pu_main = sum_above(tot_pdf, tot_line), sum_below(tot_pdf, tot_line)
+    st_m = po_main + pu_main
+    if st_m > 0:
+        po_main /= st_m; pu_main /= st_m
     tot_dir_lbl = f"UNDER {tot_line:.1f}g" if pu_main >= po_main else f"OVER {tot_line:.1f}g"
     tot_dir_prob = max(pu_main, po_main)
 
-    if best_of == 3:
-        p_over_given_a = p_2_0_a * sum_above(c_20_a, tot_line) + p_2_1_a * sum_above(c_21_a, tot_line)
-        p_under_given_a = p_2_0_a * sum_below(c_20_a, tot_line) + p_2_1_a * sum_below(c_21_a, tot_line)
-        p_over_given_b = p_2_0_b * sum_above(c_20_b, tot_line) + p_2_1_b * sum_above(c_21_b, tot_line)
-        p_under_given_b = p_2_0_b * sum_below(c_20_b, tot_line) + p_2_1_b * sum_below(c_21_b, tot_line)
-    else:
-        p_over_given_a = p_3_0_a * sum_above(c_30_a, tot_line) + p_3_1_a * sum_above(c_31_a, tot_line) + p_3_2_a * sum_above(c_32_a, tot_line)
-        p_under_given_a = p_3_0_a * sum_below(c_30_a, tot_line) + p_3_1_a * sum_below(c_31_a, tot_line) + p_3_2_a * sum_below(c_32_a, tot_line)
-        p_over_given_b = p_3_0_b * sum_above(c_30_b, tot_line) + p_3_1_b * sum_above(c_31_b, tot_line) + p_3_2_b * sum_above(c_32_b, tot_line)
-        p_under_given_b = p_3_0_b * sum_below(c_30_b, tot_line) + p_3_1_b * sum_below(c_31_b, tot_line) + p_3_2_b * sum_below(c_32_b, tot_line)
-
-    combos = [
-        (f"{s1} + Over", p_over_given_a),
-        (f"{s1} + Under", p_under_given_a),
-        (f"{s2} + Over", p_over_given_b),
-        (f"{s2} + Under", p_under_given_b)
-    ]
+    combos = [(f"{s1} + Over", p_ov_a), (f"{s1} + Under", p_un_a), (f"{s2} + Over", p_ov_b), (f"{s2} + Under", p_un_b)]
     combos.sort(key=lambda x: x[1], reverse=True)
-
     fav_scores = [(lbl, pr) for lbl, pr in score_sets if fav_name in lbl]
     top_set_lbl, top_set_prob = fav_scores[0] if fav_scores else score_sets[0]
 
-    # ━━━━━━━━━━━━━━ SALIDA ORÁCULO TEMPORAL (CERO RUIDO) ━━━━━━━━━━━━━━
+    # ━━━━━━━━━━━━━━ SALIDA UNIFICADA ORÁCULO 4D (CERO RUIDO) ━━━━━━━━━━━━━━
     print(f"\n{C_CYN}{SEP}{C_RST}")
-    print(pad_line(f" {C_CYN}{C_BLD}OMEGA v30 APEX{C_RST} | {C_YLW}ORÁCULO TEMPORAL{C_RST}"))
+    print(pad_line(f" {C_CYN}{C_BLD}OMEGA v32 ARGON-APEX{C_RST} | {C_YLW}ORÁCULO 4D{C_RST}"))
     print(f"{C_CYN}{DIV}{C_RST}")
     print(pad_line(f" {C_BLD}{p1_name}{C_RST} vs {C_BLD}{p2_name}{C_RST}"))
-    print(pad_line(f" {circuit} {tourn[:16]} | {surf} | {physics['elev']}m"))
+    print(pad_line(f" {circuit} {tourn[:14]} | {surf} | {session_time[:8].upper()}"))
     print(f"{DIV}")
-
-    print(pad_line(f"{C_YLW}[1] PULSO TEMPORAL & DOMINIO DE SAQUE{C_RST}"))
-    print(pad_line(f" • {s1:<10}: Hold {hold_a:4.1f}% | Win {match_win_a*100:4.1f}%"))
-    print(pad_line(f" • {s2:<10}: Hold {hold_b:4.1f}% | Win {match_win_b*100:4.1f}%"))
+    print(pad_line(f"{C_YLW}[1] CURVATURA TEMPORAL (SET 1 -> SET 3){C_RST}"))
+    print(pad_line(f" • {s1:<10}: S1 {p_set1_a*100:4.1f}% -> S3 {p_set3_a*100:4.1f}% | Hold {hold_a:4.1f}%"))
+    print(pad_line(f" • {s2:<10}: S1 {p_set1_b*100:4.1f}% -> S3 {p_set3_b*100:4.1f}% | Hold {hold_b:4.1f}%"))
     print(f"{DIV}")
-
-    print(pad_line(f"{C_GRN}[2] LO QUE VA A PASAR (DICTAMEN){C_RST}"))
+    print(pad_line(f"{C_GRN}[2] LO QUE VA A PASAR (DICTAMEN 4D){C_RST}"))
     print(pad_line(f" ▶ GANADOR    : {C_BLD}{fav_name} GANA{C_RST} ({fav_prob*100:4.1f}%)"))
     print(pad_line(f" ▶ MARCADOR   : {C_BLD}{top_set_lbl}{C_RST} ({top_set_prob*100:4.1f}%) | S1: {top_s1_label}"))
-    print(pad_line(f" ▶ TOTAL PROY : {C_BLD}{exp_total_games:4.1f} juegos{C_RST} (Margen +{exp_margin:.1f}g)"))
+    print(pad_line(f" ▶ TOTAL PROY : {C_BLD}{exp_total_games:4.1f} juegos{C_RST} (3er Set: {p_3rd*100:4.1f}%)"))
     print(pad_line(f" ▶ TENDENCIA  : {C_BLD}{tot_dir_lbl}{C_RST} ({tot_dir_prob*100:4.1f}%)"))
+    if min(drop_a, drop_b) <= -2.5:
+        tired_p = s1 if drop_a < drop_b else s2
+        print(pad_line(f" {C_RED}⚠ FATIGA 72H : {tired_p} cae {min(drop_a, drop_b):.1f}% hacia el Set 3{C_RST}"))
     print(f"{DIV}")
 
-    master_candidates = [
-        (f"{fav_name} ML", fav_prob),
-        (tot_dir_lbl, tot_dir_prob),
-        (top_set_lbl, top_set_prob)
-    ]
+    master_candidates = [(f"{fav_name} ML", fav_prob), (tot_dir_lbl, tot_dir_prob), (top_set_lbl, top_set_prob)]
+    if (drop_a if fav_is_a else drop_b) <= -3.5 and fav_s1_prob > fav_prob:
+        master_candidates.append((f"{fav_name} GANA SET 1", fav_s1_prob))
     master_candidates.sort(key=lambda x: x[1], reverse=True)
     master_lbl, master_prob = master_candidates[0]
 
+    fav_combos = [(lbl, pr) for lbl, pr in combos if fav_name in lbl]
+    best_fav_combo = fav_combos[0][0] if fav_combos else combos[0][0]
+
     print(pad_line(f"{C_CYN}[3] ORDEN DE EJECUCIÓN (SIN RUIDO){C_RST}"))
     print(pad_line(f" 🎯 JUGADA REINA: {C_GRN}{C_BLD}{master_lbl}{C_RST} ({master_prob*100:4.1f}%)"))
-    print(pad_line(f"    Cuota Justa : {prob_to_decimal(master_prob)} | Combo: {combos[0][0]}"))
-
-    soft_p1 = parse_odds(soft.get("moneyline", {}).get("p1"))
-    soft_p2 = parse_odds(soft.get("moneyline", {}).get("p2"))
-    soft_tot_ov = parse_odds(soft.get("games_total", {}).get("over"))
-    soft_tot_un = parse_odds(soft.get("games_total", {}).get("under"))
-    soft_sb = soft.get("set_betting", {})
-    soft_cb = soft.get("combos", {})
+    print(pad_line(f"    Cuota Justa : {prob_to_decimal(master_prob)} | Combo: {best_fav_combo}"))
 
     prob_map = {lbl.strip(): p for lbl, p in score_sets}
     combo_map = {lbl.strip(): p for lbl, p in combos}
-
     eval_markets = [
-        (f"{s1} ML", match_win_a, soft_p1),
-        (f"{s2} ML", match_win_b, soft_p2),
-        (f"OVER {tot_line:.1f}g", po_main, soft_tot_ov),
-        (f"UNDER {tot_line:.1f}g", pu_main, soft_tot_un),
-        (f"{s1} 2-0", prob_map.get(f"{s1} 2-0", 0.0), parse_odds(soft_sb.get("2_0"))),
-        (f"{s1} 2-1", prob_map.get(f"{s1} 2-1", 0.0), parse_odds(soft_sb.get("2_1"))),
-        (f"{s2} 2-0", prob_map.get(f"{s2} 2-0", 0.0), parse_odds(soft_sb.get("0_2"))),
-        (f"{s2} 2-1", prob_map.get(f"{s2} 2-1", 0.0), parse_odds(soft_sb.get("1_2"))),
-        (f"{s1} + Over", combo_map.get(f"{s1} + Over", 0.0), parse_odds(soft_cb.get("p1_over"))),
-        (f"{s1} + Under", combo_map.get(f"{s1} + Under", 0.0), parse_odds(soft_cb.get("p1_under"))),
-        (f"{s2} + Over", combo_map.get(f"{s2} + Over", 0.0), parse_odds(soft_cb.get("p2_over"))),
-        (f"{s2} + Under", combo_map.get(f"{s2} + Under", 0.0), parse_odds(soft_cb.get("p2_under"))),
+        (f"{s1} ML", match_win_a, parse_odds(soft.get("moneyline", {}).get("p1"))),
+        (f"{s2} ML", match_win_b, parse_odds(soft.get("moneyline", {}).get("p2"))),
+        (f"OVER {tot_line:.1f}g", po_main, soft_ov),
+        (f"UNDER {tot_line:.1f}g", pu_main, soft_un),
+        (f"{s1} 2-0", prob_map.get(f"{s1} 2-0", 0.0), odd_20),
+        (f"{s1} 2-1", prob_map.get(f"{s1} 2-1", 0.0), odd_21),
+        (f"{s2} 2-0", prob_map.get(f"{s2} 2-0", 0.0), odd_02),
+        (f"{s2} 2-1", prob_map.get(f"{s2} 2-1", 0.0), odd_12),
+        (f"{s1} + Over", combo_map.get(f"{s1} + Over", 0.0), odd_p1_ov),
+        (f"{s1} + Under", combo_map.get(f"{s1} + Under", 0.0), odd_p1_un),
+        (f"{s2} + Over", combo_map.get(f"{s2} + Over", 0.0), odd_p2_ov),
+        (f"{s2} + Under", combo_map.get(f"{s2} + Under", 0.0), odd_p2_un),
     ]
 
     valid_kelly = []
     for m_tag, m_prob, s_odd in eval_markets:
-        if not s_odd or s_odd <= 1.05 or s_odd > 4.50:
+        if not s_odd or s_odd <= 1.05 or s_odd > 4.50 or m_prob < 0.36:
             continue
-        if dog_name in m_tag and fav_prob >= 0.58:
+        if dog_name in m_tag and fav_prob >= 0.54:
             continue
-        if m_prob < 0.35:
+        # Bloquear Over si el dictamen estructural es Under (y viceversa)
+        if "OVER" in m_tag.upper() and pu_main > po_main:
+            continue
+        if "UNDER" in m_tag.upper() and po_main > pu_main:
             continue
         edge = (m_prob * s_odd) - 1.0
         if edge > 0.03:
             b = s_odd - 1.0
-            k_fraction = max(0.0, (b * m_prob - (1.0 - m_prob)) / b)
-            stake_pct = min(0.04, 0.25 * k_fraction)
+            stake_pct = min(0.04, 0.25 * max(0.0, (b * m_prob - (1.0 - m_prob)) / b))
             stake_val = stake_pct * bankroll
             if stake_val >= 1.50:
                 valid_kelly.append((m_tag, m_prob, s_odd, edge, stake_val, stake_pct))
 
     valid_kelly.sort(key=lambda x: x[1] * (1.0 + x[3]), reverse=True)
-
     if valid_kelly:
         print(f"{SUB}")
         for m_tag, m_prob, s_odd, edge, stake_val, stake_pct in valid_kelly[:2]:
             print(pad_line(f" {C_GRN}▶ DISPARO KELLY: {m_tag:<13} @ {s_odd:.2f}{C_RST}"))
             print(pad_line(f"   Edge: +{edge*100:.1f}% | Stake: ${stake_val:.2f} ({stake_pct*100:.1f}%)"))
 
-    t1 = time.perf_counter_ns()
-    calc_ms = (t1 - t0) / 1_000_000.0
+    calc_ms = (time.perf_counter_ns() - t0) / 1_000_000.0
     print(f"{DIV}")
-    print(pad_line(f"{C_DIM}Leyes del Tiempo OK | {calc_ms:5.1f} ms | A715{C_RST}"))
+    print(pad_line(f"{C_DIM}Argon-Apex 4D | Ciclo Bolas | {calc_ms:4.1f} ms{C_RST}"))
     print(f"{C_CYN}{SEP}{C_RST}\n")
     sys.stdout.flush()
 
 if __name__ == "__main__":
-    raw_input = ""
+    raw_in = ""
     if len(sys.argv) > 1 and os.path.exists(sys.argv[1]):
         with open(sys.argv[1], "r", encoding="utf-8") as f:
-            raw_input = f.read().strip()
+            raw_in = f.read().strip()
     elif not sys.stdin.isatty():
-        raw_input = sys.stdin.read().strip()
-
-    if not raw_input:
+        raw_in = sys.stdin.read().strip()
+    if not raw_in:
         sys.stderr.write("Error: Buffer de entrada vacío.\n")
         sys.exit(1)
-
     try:
-        run_prediction_pipeline(json.loads(raw_input))
+        run_prediction_pipeline(json.loads(raw_in))
     except Exception as ex:
         sys.stderr.write(f"Error procesando telemetría: {ex}\n")
         sys.exit(1)
