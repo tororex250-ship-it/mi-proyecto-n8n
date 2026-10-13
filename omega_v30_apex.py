@@ -3,24 +3,17 @@
 
 """
 =============================================================================
-OMEGA-QUANT v30 APEX | ULTRA-FORENSIC QUANTITATIVE TENNIS ENGINE
+OMEGA-QUANT v30 APEX | TEMPORAL ORACLE ENGINE (ZERO-NOISE ARCHITECTURE)
 =============================================================================
-Arquitectura Temporal y Balística:
-  • Las Leyes del Tiempo: Doble decaimiento exponencial (65% momentum 45d, 35% base 240d).
-  • Inferencia Bayesiana Jerárquica + Contracción Empírica (Martin Ingram, k=1344).
-  • Descomposición Atómica Biométrica de Saque: 1st In, 1st Won, 2nd Won, Ace, DF.
-  • Regresión a la Media de Puntos de Quiebre (Break Point Leverage / Anti-Luck).
-  • Matriz de Oponentes Comunes (Algoritmo Knottenbelt, Imperial College).
-  • Historial Directo H2H (Emparejamiento Táctico).
-  • Interacción de Lateralidad Asimétrica (Zurdo 'L' vs Diestro 'R').
-  • Scouting Táctico Dinámico (tactical_matchup: estilos, fragilidad y sesgo Under/Over).
-  • Balística Barométrica + Termodinámica de Pelota Presurizada (Gay-Lussac + Humedad OWM).
-  • Bisección Bidireccional de Markov (Anclaje Exacto Moneyline + Calibración de Baricentro).
-  • Conservación Exacta de Probabilidad Marginal (2-0 + 2-1 == Fair Moneyline).
-  • Desviggeo de Shin (1992) con estimación de dinero informado (z).
-  • Detección Multi-Mercado Completa (12 mercados) y Criterio Quarter-Kelly (Cap 4%).
-Hardware target: Dimensity 8300-Ultra (Afinidad CPU Cortex-A715 cores 4-7).
-Formato visual: Terminal 42 columnas (POCO X6 Pro).
+Todo el motor analítico y las Leyes del Tiempo trabajan bajo el capó:
+  • Leyes del Tiempo: Doble decaimiento exponencial (65% 45d / 35% 240d).
+  • Vector de Momentum Temporal: Compara rendimiento reciente (60d) vs base.
+  • Descomposición Biométrica Completa: 1st In, 1st Won, 2nd Won, Ace%, DF%,
+    Break Point Saved% y Break Point Conversion% (ya no quedan ignorados).
+  • Matriz Knottenbelt (Oponentes Comunes) + H2H Directo Ponderado por Tiempo.
+  • Termodinámica y Balística (Altitud, Densidad, Viento, Humedad OWM).
+  • Calibración Bidireccional de Markov (Anclaje Moneyline + Línea Totales).
+  • Salida Oráculo Cero-Ruido: Solo muestra LO QUE VA A PASAR y la jugada.
 =============================================================================
 """
 
@@ -38,14 +31,12 @@ from typing import Dict, Tuple, Optional, Any, List
 import requests
 import numpy as np
 
-# ━━━━━━━━━━━━━━ 1. COTEJO DIFUSO RAPIDFUZZ (C++) ━━━━━━━━━━━━━━
 try:
     from rapidfuzz import fuzz, process
     HAS_RAPIDFUZZ = True
 except ImportError:
     HAS_RAPIDFUZZ = False
 
-# ━━━━━━━━━━━━━━ 2. AFINIDAD DE HARDWARE CORTEX-A715 ━━━━━━━━━━━━━━
 def bind_to_cortex_a715():
     if hasattr(os, 'sched_setaffinity'):
         try:
@@ -58,7 +49,6 @@ def bind_to_cortex_a715():
 
 bind_to_cortex_a715()
 
-# ━━━━━━━━━━━━━━ 3. CONSTANTES Y FORMATO VISUAL (42 COLS) ━━━━━━━━━━━━━━
 W = 42
 SEP = "━" * W
 DIV = "─" * W
@@ -105,15 +95,15 @@ KNOWN_HANDEDNESS = {
     "djokovic": "R", "medvedev": "R", "zverev": "R", "rublev": "R", "tsitsipas": "R"
 }
 
-# ━━━━━━━━━━━━━━ 4. NORMALIZACIÓN Y PONDERACIÓN TEMPORAL (LEYES DEL TIEMPO) ━━━━━━━━━━━━━━
+# ━━━━━━━━━━━━━━ 1. LEYES DEL TIEMPO (PESO TEMPORAL CONTINUO) ━━━━━━━━━━━━━━
 def clean_str(s: str) -> str:
     s_norm = unicodedata.normalize('NFKD', str(s))
     return ''.join(c for c in s_norm if not unicodedata.combining(c)).lower().strip()
 
-def parse_date_weight(date_str: str) -> float:
-    """Leyes del Tiempo: Doble decaimiento exponencial (65% momentum reciente 45d, 35% base anual 240d)."""
+def parse_date_metrics(date_str: str) -> Tuple[float, float]:
+    """Devuelve (peso_temporal, dias_transcurridos) bajo las Leyes del Tiempo."""
     if not date_str or len(str(date_str)) < 4:
-        return 0.50
+        return 0.50, 180.0
     try:
         clean_d = str(date_str).replace("-", "").strip()
         if len(clean_d) >= 8:
@@ -124,11 +114,15 @@ def parse_date_weight(date_str: str) -> float:
         days_diff = max(0.0, (now_dt - match_dt).total_seconds() / 86400.0)
         w_momentum = math.exp(-days_diff / 45.0)
         w_baseline = math.exp(-days_diff / 240.0)
-        return float(0.65 * w_momentum + 0.35 * w_baseline)
+        return float(0.65 * w_momentum + 0.35 * w_baseline), days_diff
     except Exception:
-        return 0.50
+        return 0.50, 180.0
 
-# ━━━━━━━━━━━━━━ 5. CACHÉ DE IDENTIDADES EN RAM (RAPIDFUZZ) ━━━━━━━━━━━━━━
+def parse_date_weight(date_str: str) -> float:
+    w, _ = parse_date_metrics(date_str)
+    return w
+
+# ━━━━━━━━━━━━━━ 2. CACHÉ DE IDENTIDADES EN RAM (RAPIDFUZZ + SQLITE) ━━━━━━━━━━━━━━
 PLAYER_INDEX_CACHE: List[str] = []
 
 def get_player_universe() -> List[str]:
@@ -174,7 +168,7 @@ def fuzzy_canonical_name(raw_name: str) -> str:
     best = process.extractOne(raw_name, universe, scorer=fuzz.token_set_ratio, score_cutoff=80.0)
     return best[0] if best else raw_name
 
-# ━━━━━━━━━━━━━━ 6. INGESTA FORENSE ATÓMICA DE ADN (1ST/2ND/ACE/BP) ━━━━━━━━━━━━━━
+# ━━━━━━━━━━━━━━ 3. INGESTA FORENSE ATÓMICA (ACE/DF/BP/MOMENTUM) ━━━━━━━━━━━━━━
 class PlayerBioProfile:
     def __init__(self):
         self.raw_pts = 0
@@ -192,9 +186,22 @@ class PlayerBioProfile:
         self.rc_won = 0.0
         self.rc_bp_conv = 0.0
         self.rc_bp_opps = 0.0
+        # Vectores de Momentum Temporal (últimos 60 días vs histórico)
+        self.recent_sv_pts = 0.0
+        self.recent_sv_won = 0.0
+        self.recent_matches_w = 0.0
+        self.recent_wins_w = 0.0
         self.opponents: Dict[str, List[float]] = {}
         self.h2h_matches = 0
         self.h2h_wins = 0
+        self.h2h_weight_wins = 0.0
+        self.h2h_weight_tot = 0.0
+        # Tasas computadas
+        self.ace_rate = 0.05
+        self.df_rate = 0.04
+        self.bp_save_rate = 0.60
+        self.bp_conv_rate = 0.42
+        self.temporal_momentum = 0.0
 
 def detect_handedness(player_name: str, files: List[str]) -> str:
     clean_p = clean_str(player_name)
@@ -279,10 +286,10 @@ def scan_atomic_profile(files: List[str], target_player: str, opp_player: str, t
                     if not is_winner and not is_loser:
                         continue
                     d_str = parts[d_idx] if d_idx != -1 else ""
-                    t_w = parse_date_weight(d_str)
+                    t_w, days_ago = parse_date_metrics(d_str)
                     r_surf = parts[s_idx].lower() if s_idx != -1 else ""
                     is_target_surf = (surf_filter in r_surf or not r_surf)
-                    surf_w = 1.0 if is_target_surf else 0.20
+                    surf_w = 1.0 if is_target_surf else 0.22
                     weight = t_w * surf_w
                     try:
                         w_s = float(parts[ws_idx]) if ws_idx != -1 and parts[ws_idx] else 0.0
@@ -320,6 +327,11 @@ def scan_atomic_profile(files: List[str], target_player: str, opp_player: str, t
                         profile.rc_bp_conv += (l_bpf - l_bps) * weight
                         profile.rc_bp_opps += l_bpf * weight
                         profile.raw_pts += int(w_s)
+                        if days_ago <= 75.0:
+                            profile.recent_sv_pts += w_s * surf_w
+                            profile.recent_sv_won += (w_1w + w_2w) * surf_w
+                            profile.recent_matches_w += surf_w
+                            profile.recent_wins_w += surf_w
                         if is_target_surf:
                             profile.surf_pts += w_s
                         profile.weight_tot += weight
@@ -331,6 +343,8 @@ def scan_atomic_profile(files: List[str], target_player: str, opp_player: str, t
                         if opp_last and opp_last in l_clean:
                             profile.h2h_matches += 1
                             profile.h2h_wins += 1
+                            profile.h2h_weight_wins += t_w
+                            profile.h2h_weight_tot += t_w
                     elif is_loser:
                         opp_id = w_clean.split()[-1]
                         profile.sv_pts += l_s * weight
@@ -346,6 +360,10 @@ def scan_atomic_profile(files: List[str], target_player: str, opp_player: str, t
                         profile.rc_bp_conv += (w_bpf - w_bps) * weight
                         profile.rc_bp_opps += w_bpf * weight
                         profile.raw_pts += int(l_s)
+                        if days_ago <= 75.0:
+                            profile.recent_sv_pts += l_s * surf_w
+                            profile.recent_sv_won += (l_1w + l_2w) * surf_w
+                            profile.recent_matches_w += surf_w
                         if is_target_surf:
                             profile.surf_pts += l_s
                         profile.weight_tot += weight
@@ -356,13 +374,13 @@ def scan_atomic_profile(files: List[str], target_player: str, opp_player: str, t
                         profile.opponents[opp_id][2] += int(l_s)
                         if opp_last and opp_last in w_clean:
                             profile.h2h_matches += 1
+                            profile.h2h_weight_tot += t_w
         except Exception:
             continue
     if profile.raw_pts >= 40 and profile.sv_pts > 0 and profile.rc_pts > 0:
         return profile
     return None
 
-# ━━━━━━━━━━━━━━ RESOLUCIÓN DINÁMICA DE ARCHIVOS MULTI-ENTORNO ━━━━━━━━━━━━━━
 def get_dataset_files(circuit: str) -> Tuple[List[str], List[str]]:
     pfx = "wta" if circuit == "WTA" else "atp"
     home_dir = os.path.expanduser("~")
@@ -391,9 +409,24 @@ def get_dataset_files(circuit: str) -> Tuple[List[str], List[str]]:
                             main_files.append(f)
     return main_files, itf_files
 
-def resolve_hierarchical_dna(player_input: str, opp_input: str, target_surf: str, circuit: str) -> Tuple[float, float, int, str, str, PlayerBioProfile]:
+def resolve_hierarchical_dna(player_input: str, opp_input: str, target_surf: str = "Hard", circuit: Optional[str] = None) -> Tuple[float, float, int, str, str, PlayerBioProfile]:
+    """Soporta tanto llamada de 4 argumentos (motor principal) como de 3 argumentos (scripts de backtest/optuna)."""
+    if circuit is None:
+        # Compatibilidad retroactiva: resolve_hierarchical_dna(player, surf, circuit)
+        circuit_str = str(target_surf).upper()
+        surf_str = str(opp_input)
+        opp_str = ""
+        res = _resolve_dna_core(player_input, opp_str, surf_str, circuit_str)
+        return res[:5]  # type: ignore
+    return _resolve_dna_core(player_input, opp_input, target_surf, circuit)
+
+def _resolve_dna_core(player_input: str, opp_input: str, target_surf: str, circuit: str) -> Tuple[float, float, int, str, str, PlayerBioProfile]:
     mean_spw = 0.5750 if circuit == "WTA" else 0.6400
     mean_rpw = 0.4250 if circuit == "WTA" else 0.3600
+    mean_ace = 0.042 if circuit == "WTA" else 0.082
+    mean_df = 0.048 if circuit == "WTA" else 0.035
+    mean_bp_conv = 0.445 if circuit == "WTA" else 0.400
+
     main_files, itf_files = get_dataset_files(circuit)
     hand = detect_handedness(player_input, main_files)
     prof = scan_atomic_profile(main_files, player_input, opp_input, target_surf)
@@ -403,16 +436,39 @@ def resolve_hierarchical_dna(player_input: str, opp_input: str, target_surf: str
         p_2nd_pts = prof.sv_pts - prof.sv_1st_in
         p_2w = prof.sv_2nd_won / p_2nd_pts if p_2nd_pts > 0 else 0.50
         spw_atomic = (p_1in * p_1w) + ((1.0 - p_1in) * p_2w)
-        if prof.sv_bp_faced >= 20:
-            bp_rate = prof.sv_bp_saved / prof.sv_bp_faced
-            if bp_rate > 0.72:
-                spw_atomic = 0.85 * spw_atomic + 0.15 * (spw_atomic * (1.0 - (bp_rate - 0.72) * 0.5))
+
+        # Activar telemetría biométrica real: Aces, Dobles Faltas, Quiebres y Momentum Temporal
+        prof.ace_rate = prof.sv_aces / prof.sv_pts if prof.sv_pts > 0 else mean_ace
+        prof.df_rate = prof.sv_dfs / prof.sv_pts if prof.sv_pts > 0 else mean_df
+        prof.bp_save_rate = prof.sv_bp_saved / prof.sv_bp_faced if prof.sv_bp_faced >= 15 else 0.60
+        prof.bp_conv_rate = prof.rc_bp_conv / prof.rc_bp_opps if prof.rc_bp_opps >= 15 else mean_bp_conv
+
+        # Penalización por fragilidad real de 2do saque / exceso de dobles faltas
+        df_excess = max(0.0, prof.df_rate - mean_df)
+        ace_bonus = max(-0.008, min(0.010, (prof.ace_rate - mean_ace) * 0.18))
+        spw_atomic = spw_atomic + ace_bonus - (df_excess * 0.22)
+
+        # Anti-Luck en Break Points salvados
+        if prof.sv_bp_faced >= 20 and prof.bp_save_rate > 0.70:
+            spw_atomic = 0.85 * spw_atomic + 0.15 * (spw_atomic - (prof.bp_save_rate - 0.70) * 0.08)
+
+        # Vector de Momentum de las Leyes del Tiempo (últimos 75 días vs media histórica)
+        if prof.recent_sv_pts >= 120:
+            rec_spw = prof.recent_sv_won / prof.recent_sv_pts
+            prof.temporal_momentum = max(-0.018, min(0.018, (rec_spw - spw_atomic) * 0.45))
+            spw_atomic += prof.temporal_momentum
+
         rpw_raw = prof.rc_won / prof.rc_pts if prof.rc_pts > 0 else mean_rpw
+        # Integración de eficacia en conversión de Break Points al resto
+        bp_conv_delta = max(-0.010, min(0.010, (prof.bp_conv_rate - mean_bp_conv) * 0.12))
+        rpw_raw += bp_conv_delta
+
         k_shrink = 1344.0
         w_sample = prof.raw_pts / (prof.raw_pts + k_shrink)
         spw = w_sample * spw_atomic + (1.0 - w_sample) * mean_spw
         rpw = w_sample * rpw_raw + (1.0 - w_sample) * mean_rpw
         return spw, rpw, prof.raw_pts, f"CSV-MAIN ({prof.raw_pts}p)", hand, prof
+
     if hand == "R":
         hand = detect_handedness(player_input, itf_files)
     prof_itf = scan_atomic_profile(itf_files, player_input, opp_input, target_surf)
@@ -426,10 +482,10 @@ def resolve_hierarchical_dna(player_input: str, opp_input: str, target_surf: str
         spw = w_sample * spw_adj + (1.0 - w_sample) * mean_spw
         rpw = w_sample * rpw_adj + (1.0 - w_sample) * mean_rpw
         return spw, rpw, prof_itf.raw_pts, f"CSV-ITF ({prof_itf.raw_pts}p)", hand, prof_itf
+
     dummy = PlayerBioProfile()
     return mean_spw, mean_rpw, 0, f"PRIOR-{circuit}", hand, dummy
 
-# ━━━━━━━━━━━━━━ 7. MATRIZ KNOTTENBELT DE OPONENTES COMUNES ━━━━━━━━━━━━━━
 def compute_common_opponents_delta(prof_a: PlayerBioProfile, prof_b: PlayerBioProfile) -> Tuple[float, int]:
     opps_a = set(prof_a.opponents.keys())
     opps_b = set(prof_b.opponents.keys())
@@ -453,7 +509,6 @@ def compute_common_opponents_delta(prof_a: PlayerBioProfile, prof_b: PlayerBioPr
         return net_delta, valid_count
     return 0.0, 0
 
-# ━━━━━━━━━━━━━━ 8. BALÍSTICA, FÍSICA Y TERMODINÁMICA DE PELOTA ━━━━━━━━━━━━━━
 def resolve_physics(tourn: str, city_field: Optional[str], court_env: str) -> Dict[str, Any]:
     if court_env.lower() == "indoor":
         t, p = 21.0, 1013.25
@@ -503,7 +558,6 @@ def resolve_physics(tourn: str, city_field: Optional[str], court_env: str) -> Di
         "density": round(rho, 3), "delta_env": d_env_total, "elev": elev, "humidity": hum
     }
 
-# ━━━━━━━━━━━━━━ 9. CADENAS DE MARKOV Y CONVOLUCIÓN EXACTA ━━━━━━━━━━━━━━
 def markov_hold(p: float) -> float:
     p = max(0.01, min(0.99, p))
     q = 1.0 - p
@@ -567,7 +621,6 @@ def analytical_set_matrix(pa_srv: float, pb_srv: float) -> Tuple[Dict[Tuple[int,
     combined = {k: 0.5 * d0.get(k, 0.0) + 0.5 * d1.get(k, 0.0) for k in set(d0).union(d1)}
     return combined, sum(prob for (i, j), prob in combined.items() if i > j)
 
-# ━━━━━━━━━━━━━━ 10. SHIN DE-VIGGING BIDIRECCIONAL ━━━━━━━━━━━━━━
 def parse_odds(val: Any) -> Optional[float]:
     if val is None:
         return None
@@ -640,7 +693,7 @@ def sum_above(dist: np.ndarray, thresh: float) -> float:
     k = np.arange(len(dist))
     return float(np.sum(dist[k > thresh]))
 
-# ━━━━━━━━━━━━━━ 11. PIPELINE PRINCIPAL DE INFERENCIA v30 (TEMPORAL APEX) ━━━━━━━━━━━━━━
+# ━━━━━━━━━━━━━━ 4. MOTOR SILENCIOSO + DICTAMEN DE LO QUE VA A PASAR ━━━━━━━━━━━━━━
 def run_prediction_pipeline(payload: Dict[str, Any]):
     t0 = time.perf_counter_ns()
     ev = payload.get("event", {})
@@ -659,22 +712,25 @@ def run_prediction_pipeline(payload: Dict[str, Any]):
     surf = ev.get("surface", "Hard")
     best_of = int(ev.get("best_of", 3))
 
-    s1 = p1_name.strip().split()[-1][:8]
-    s2 = p2_name.strip().split()[-1][:8]
+    s1 = p1_name.strip().split()[-1][:10]
+    s2 = p2_name.strip().split()[-1][:10]
 
+    # Procesamiento interno de Balística, ADN, Biometría, Knottenbelt y Leyes del Tiempo
     physics = resolve_physics(tourn, city_f, env)
     d_env_base = physics["delta_env"]
 
-    spw_a, rpw_a, pts_a, src_a, hand_a, prof_a = resolve_hierarchical_dna(p1_name, p2_name, surf, circuit)
-    spw_b, rpw_b, pts_b, src_b, hand_b, prof_b = resolve_hierarchical_dna(p2_name, p1_name, surf, circuit)
-
-    knotten_delta, knotten_n = compute_common_opponents_delta(prof_a, prof_b)
+    spw_a, rpw_a, pts_a, src_a, hand_a, prof_a = _resolve_dna_core(p1_name, p2_name, surf, circuit)
+    spw_b, rpw_b, pts_b, src_b, hand_b, prof_b = _resolve_dna_core(p2_name, p1_name, surf, circuit)
+    knotten_delta, _ = compute_common_opponents_delta(prof_a, prof_b)
 
     mean_spw = 0.5750 if circuit == "WTA" else 0.6400
     mean_rpw = 0.4250 if circuit == "WTA" else 0.3600
 
-    boost_a = d_env_base * math.pow(spw_a / mean_spw, 1.2)
-    boost_b = d_env_base * math.pow(spw_b / mean_spw, 1.2)
+    # El boost balístico beneficia más a quien tiene mayor tasa de Aces
+    ace_factor_a = max(0.85, min(1.30, prof_a.ace_rate / (0.042 if circuit == "WTA" else 0.082)))
+    ace_factor_b = max(0.85, min(1.30, prof_b.ace_rate / (0.042 if circuit == "WTA" else 0.082)))
+    boost_a = d_env_base * math.pow(spw_a / mean_spw, 1.1) * ace_factor_a
+    boost_b = d_env_base * math.pow(spw_b / mean_spw, 1.1) * ace_factor_b
 
     tactical_a, tactical_b = 0.0, 0.0
     if hand_a == "L" and hand_b == "R":
@@ -684,35 +740,30 @@ def run_prediction_pipeline(payload: Dict[str, Any]):
         tactical_b = 0.008 if "hard" in surf.lower() else 0.012
         tactical_a = -0.005
 
-    # ━━━━━━━━━━━━━━ TACTICAL MATCHUP SCOUTING MODIFIER ━━━━━━━━━━━━━━
     tactical_scout = ev.get("tactical_matchup", {})
     p1_style = str(tactical_scout.get("p1_style", "")).lower()
     p2_style = str(tactical_scout.get("p2_style", "")).lower()
     exp_shape = str(tactical_scout.get("expected_shape", "symmetric")).lower()
     tac_bias = str(tactical_scout.get("bias", "neutral")).lower()
 
-    scout_delta_a, scout_delta_b = 0.0, 0.0
     if ("counterpuncher" in p1_style or "defense" in p1_style) and "aggressive" in p2_style:
-        scout_delta_a += 0.005
-        scout_delta_b -= 0.004
+        tactical_a += 0.005
+        tactical_b -= 0.004
     elif ("counterpuncher" in p2_style or "defense" in p2_style) and "aggressive" in p1_style:
-        scout_delta_b += 0.005
-        scout_delta_a -= 0.004
+        tactical_b += 0.005
+        tactical_a -= 0.004
 
     if any(k in p1_style for k in ["erratic", "volatile", "double_fault", "fragile"]):
-        scout_delta_a -= 0.012
+        tactical_a -= 0.012
     if any(k in p2_style for k in ["erratic", "volatile", "double_fault", "fragile"]):
-        scout_delta_b -= 0.012
+        tactical_b -= 0.012
 
-    tactical_a += scout_delta_a
-    tactical_b += scout_delta_b
-
+    # H2H ponderado por las Leyes del Tiempo (partidos recientes pesan más que H2H viejos)
     h2h_boost_a = 0.0
-    if prof_a.h2h_matches > 0:
-        h2h_win_rate = prof_a.h2h_wins / prof_a.h2h_matches
-        h2h_boost_a = (h2h_win_rate - 0.50) * min(0.02, 0.005 * prof_a.h2h_matches)
+    if prof_a.h2h_weight_tot > 0:
+        h2h_win_rate = prof_a.h2h_weight_wins / prof_a.h2h_weight_tot
+        h2h_boost_a = (h2h_win_rate - 0.50) * min(0.022, 0.007 * prof_a.h2h_matches)
 
-    # Probabilidad base de punto en servicio (incluyendo resto del oponente)
     pa_base = spw_a - (rpw_b - mean_rpw) + boost_a + tactical_a + knotten_delta + h2h_boost_a
     pb_base = spw_b - (rpw_a - mean_rpw) + boost_b + tactical_b - knotten_delta - h2h_boost_a
 
@@ -725,21 +776,23 @@ def run_prediction_pipeline(payload: Dict[str, Any]):
 
     pin_p1 = parse_odds(pinn.get("moneyline", {}).get("p1"))
     pin_p2 = parse_odds(pinn.get("moneyline", {}).get("p2"))
-    raw_p1_str = str(pinn.get("moneyline", {}).get("p1", "N/A"))
-    raw_p2_str = str(pinn.get("moneyline", {}).get("p2", "N/A"))
     tot_pin = pinn.get("games_total", {})
     tot_line = parse_spread(tot_pin.get("line")) or parse_spread(soft.get("games_total", {}).get("line")) or (38.5 if best_of == 5 else 22.5)
 
-    # Calibración del baricentro de servicio según sesgo táctico (Under/Over)
+    # Calibración del baricentro de saque según la línea del mercado y sesgo táctico
     bar_p = (pa_base + pb_base) / 2.0
-    if "under" in tac_bias or "asymmetric" in exp_shape:
-        bar_p = max(0.48, bar_p - (0.018 if circuit == "WTA" else 0.022))
-    elif "over" in tac_bias or "tiebreak" in exp_shape:
-        bar_p = min(0.72, bar_p + 0.015)
+    ref_line = 38.5 if best_of == 5 else (21.0 if circuit == "WTA" else 22.5)
+    line_shift = (tot_line - ref_line) * 0.008
+    bar_p = max(0.46, min(0.74, bar_p + line_shift))
 
-    # Bisección exacta sobre la Cadena de Markov para coherencia 100% entre [1], [2] y [3]
+    if "under" in tac_bias or "asymmetric" in exp_shape:
+        bar_p = max(0.46, bar_p - (0.016 if circuit == "WTA" else 0.020))
+    elif "over" in tac_bias or "tiebreak" in exp_shape:
+        bar_p = min(0.74, bar_p + 0.014)
+
+    # Bisección Exacta de Markov (28 iteraciones)
     if pin_p1 and pin_p2:
-        p_shin_a, p_shin_b, z_vig = shin_solve_2way(pin_p1, pin_p2)
+        p_shin_a, _, _ = shin_solve_2way(pin_p1, pin_p2)
         _, p_set_a_raw = analytical_set_matrix(pa_base, pb_base)
         p_match_a_raw = (
             10.0 * (p_set_a_raw**3) - 15.0 * (p_set_a_raw**4) + 6.0 * (p_set_a_raw**5)
@@ -794,8 +847,9 @@ def run_prediction_pipeline(payload: Dict[str, Any]):
     hold_a = markov_hold(pa_final) * 100.0
     hold_b = markov_hold(pb_final) * 100.0
 
-    # Distribución condicional de juegos por set y sesgo táctico
-    is_under_bias = ("under" in tac_bias or "asymmetric" in exp_shape)
+    fav_prob = max(match_win_a, match_win_b)
+    is_under_bias = ("under" in tac_bias or "asymmetric" in exp_shape or fav_prob >= 0.66)
+
     set_games_a = np.zeros(14, dtype=np.float64)
     set_games_b = np.zeros(14, dtype=np.float64)
 
@@ -833,8 +887,6 @@ def run_prediction_pipeline(payload: Dict[str, Any]):
     if norm_s1 > 0:
         top_s1_prob /= norm_s1
 
-    # Probabilidades exactas de marcador por sets (conservando marginales p_20_a + p_21_a == match_win_a)
-    score_sets = []
     if best_of == 5:
         p_3_0_a = p_set_a ** 3
         p_3_1_a = 3.0 * (p_set_a ** 3) * p_set_b
@@ -865,12 +917,9 @@ def run_prediction_pipeline(payload: Dict[str, Any]):
         tot_pdf[:len(c_32_b)] += p_3_2_b * c_32_b
         p_3rd = p_3_2_a + p_3_2_b
     else:
-        p_2_0_a_iid = p_set_a ** 2
         p_2_1_a_iid = 2.0 * (p_set_a ** 2) * p_set_b
-        p_2_0_b_iid = p_set_b ** 2
         p_2_1_b_iid = 2.0 * (p_set_b ** 2) * p_set_a
 
-        # Factor de compresión de 3er set (evita la trampa 50/50 manteniendo suma exacta de ganador)
         k_straight = 0.24 if is_under_bias else 0.06
         p_2_1_a = p_2_1_a_iid * (1.0 - k_straight)
         p_2_0_a = max(0.0, match_win_a - p_2_1_a)
@@ -897,13 +946,26 @@ def run_prediction_pipeline(payload: Dict[str, Any]):
     if np.sum(tot_pdf) > 0:
         tot_pdf /= np.sum(tot_pdf)
 
+    exp_total_games = float(np.sum(np.arange(len(tot_pdf)) * tot_pdf))
     mean_ga_set = sum(ga * prob for (ga, gb), prob in set_dist_matrix.items())
     mean_gb_set = sum(gb * prob for (ga, gb), prob in set_dist_matrix.items())
     exp_sets = (2.0 + p_3rd) if best_of == 3 else 3.5
     exp_margin = abs(mean_ga_set - mean_gb_set) * exp_sets
-    fav_winner = s1 if match_win_a >= match_win_b else s2
 
-    combos = []
+    fav_is_a = match_win_a >= match_win_b
+    fav_name = s1 if fav_is_a else s2
+    dog_name = s2 if fav_is_a else s1
+
+    po_main = sum_above(tot_pdf, tot_line)
+    pu_main = sum_below(tot_pdf, tot_line)
+    st_main = po_main + pu_main
+    if st_main > 0:
+        po_main /= st_main
+        pu_main /= st_main
+
+    tot_dir_lbl = f"UNDER {tot_line:.1f}g" if pu_main >= po_main else f"OVER {tot_line:.1f}g"
+    tot_dir_prob = max(pu_main, po_main)
+
     if best_of == 3:
         p_over_given_a = p_2_0_a * sum_above(c_20_a, tot_line) + p_2_1_a * sum_above(c_21_a, tot_line)
         p_under_given_a = p_2_0_a * sum_below(c_20_a, tot_line) + p_2_1_a * sum_below(c_21_a, tot_line)
@@ -915,100 +977,48 @@ def run_prediction_pipeline(payload: Dict[str, Any]):
         p_over_given_b = p_3_0_b * sum_above(c_30_b, tot_line) + p_3_1_b * sum_above(c_31_b, tot_line) + p_3_2_b * sum_above(c_32_b, tot_line)
         p_under_given_b = p_3_0_b * sum_below(c_30_b, tot_line) + p_3_1_b * sum_below(c_31_b, tot_line) + p_3_2_b * sum_below(c_32_b, tot_line)
 
-    combos.append((f"{s1} + Over", p_over_given_a))
-    combos.append((f"{s1} + Under", p_under_given_a))
-    combos.append((f"{s2} + Over", p_over_given_b))
-    combos.append((f"{s2} + Under", p_under_given_b))
+    combos = [
+        (f"{s1} + Over", p_over_given_a),
+        (f"{s1} + Under", p_under_given_a),
+        (f"{s2} + Over", p_over_given_b),
+        (f"{s2} + Under", p_under_given_b)
+    ]
     combos.sort(key=lambda x: x[1], reverse=True)
 
-    # ━━━━━━━━━━━━━━ SALIDA QUIRÚRGICA 42 COLUMNAS ━━━━━━━━━━━━━━
+    fav_scores = [(lbl, pr) for lbl, pr in score_sets if fav_name in lbl]
+    top_set_lbl, top_set_prob = fav_scores[0] if fav_scores else score_sets[0]
+
+    # ━━━━━━━━━━━━━━ SALIDA ORÁCULO TEMPORAL (CERO RUIDO) ━━━━━━━━━━━━━━
     print(f"\n{C_CYN}{SEP}{C_RST}")
-    print(pad_line(f" {C_CYN}{C_BLD}OMEGA-QUANT v30 APEX{C_RST} | {C_BLD}42-COL POCO{C_RST}"))
+    print(pad_line(f" {C_CYN}{C_BLD}OMEGA v30 APEX{C_RST} | {C_YLW}ORÁCULO TEMPORAL{C_RST}"))
     print(f"{C_CYN}{DIV}{C_RST}")
     print(pad_line(f" {C_BLD}{p1_name}{C_RST} vs {C_BLD}{p2_name}{C_RST}"))
-    print(pad_line(f" {circuit} {tourn[:18]} | {surf} Bo{best_of}"))
+    print(pad_line(f" {circuit} {tourn[:16]} | {surf} | {physics['elev']}m"))
     print(f"{DIV}")
 
-    print(pad_line(f"{C_YLW}[1] ENTRADA Y ADN EXACTO{C_RST}"))
-    print(pad_line(f" • Alt/Aire : {physics['elev']}m | ρ={physics['density']}kg/m³"))
-    print(pad_line(f" • Balística: {d_env_base:+.4f} ({physics['mode']})"))
-    print(pad_line(f" • [A] {s1:<8}: {src_a[:16]} ({hand_a})"))
-    print(pad_line(f"   Hold Proy: {hold_a:4.1f}%"))
-    print(pad_line(f" • [B] {s2:<8}: {src_b[:16]} ({hand_b})"))
-    print(pad_line(f"   Hold Proy: {hold_b:4.1f}%"))
-    kn_txt = f"{knotten_n} opps ({knotten_delta:+.3f})" if knotten_n > 0 else "0 opps"
-    h2h_txt = f"{prof_a.h2h_wins}-{prof_a.h2h_matches - prof_a.h2h_wins}" if prof_a.h2h_matches > 0 else "0-0"
-    print(pad_line(f" • Matriz Kn: {kn_txt} | H2H: {h2h_txt}"))
-    print(pad_line(f" • Ancla Sh : {s1} {raw_p1_str} | {s2} {raw_p2_str}"))
+    print(pad_line(f"{C_YLW}[1] PULSO TEMPORAL & DOMINIO DE SAQUE{C_RST}"))
+    print(pad_line(f" • {s1:<10}: Hold {hold_a:4.1f}% | Win {match_win_a*100:4.1f}%"))
+    print(pad_line(f" • {s2:<10}: Hold {hold_b:4.1f}% | Win {match_win_b*100:4.1f}%"))
     print(f"{DIV}")
 
-    p1_us = prob_to_american(match_win_a)
-    p2_us = prob_to_american(match_win_b)
-    print(pad_line(f"{C_YLW}[2] RESOLUCIÓN ANALÍTICA{C_RST}"))
-    print(pad_line(f" • {s1:<8} Fair: {match_win_a*100:4.1f}% ( {C_CYN}{p1_us:>5}{C_RST}|{prob_to_decimal(match_win_a)})"))
-    print(pad_line(f" • {s2:<8} Fair: {match_win_b*100:4.1f}% ( {C_CYN}{p2_us:>5}{C_RST}|{prob_to_decimal(match_win_b)})"))
-    print(pad_line(f" • Set 1 Top: {top_s1_label} ({top_s1_prob*100:4.1f}%)"))
-    print(pad_line(f" • Margen J : {fav_winner} +{exp_margin:.1f} proy"))
-    print(f"{SUB}")
-
-    print(pad_line(f"{C_YLW}[3] PROBABILIDAD SETS{C_RST}"))
-    for idx, (label, prob) in enumerate(score_sets[:4], 1):
-        tag = f" {C_GRN}[TOP]{C_RST}" if idx == 1 else ""
-        us_odd = prob_to_american(prob)
-        print(pad_line(f" {idx}. {label:<11}: {prob*100:4.1f}% ( {C_CYN}{us_odd:>5}{C_RST}){tag}"))
-    print(f"{SUB}")
-
-    print(pad_line(f"{C_YLW}[4] GRILLA TOTALES ({tot_line:.1f}g){C_RST}"))
-    print(pad_line(" LÍNEA  OVER%  CUOTA  UNDER% CUOTA"))
-    lines_list = [tot_line - 1.0, tot_line, tot_line + 1.0]
-    p_overs = []
-    p_unders = []
-    for ln in lines_list:
-        po = sum_above(tot_pdf, ln)
-        pu = sum_below(tot_pdf, ln)
-        st = po + pu
-        if st > 0:
-            po /= st
-            pu /= st
-        p_overs.append(po)
-        p_unders.append(pu)
-        us_o = prob_to_american(po)
-        us_u = prob_to_american(pu)
-        mark = "*" if ln == tot_line else " "
-        print(pad_line(f" {ln:4.1f}g{mark}{po*100:4.1f}%  {C_CYN}{us_o:>5}{C_RST} {pu*100:4.1f}%  {C_CYN}{us_u:>5}{C_RST}"))
-    print(f"{SUB}")
-
-    print(pad_line(f"{C_YLW}[5] COMBOS BIVARIADOS{C_RST}"))
-    for label, prob in combos:
-        us_odd = prob_to_american(prob)
-        print(pad_line(f" • {label:<15}: {prob*100:4.1f}% ( {C_CYN}{us_odd:>5}{C_RST}|{prob_to_decimal(prob)})"))
+    print(pad_line(f"{C_GRN}[2] LO QUE VA A PASAR (DICTAMEN){C_RST}"))
+    print(pad_line(f" ▶ GANADOR    : {C_BLD}{fav_name} GANA{C_RST} ({fav_prob*100:4.1f}%)"))
+    print(pad_line(f" ▶ MARCADOR   : {C_BLD}{top_set_lbl}{C_RST} ({top_set_prob*100:4.1f}%) | S1: {top_s1_label}"))
+    print(pad_line(f" ▶ TOTAL PROY : {C_BLD}{exp_total_games:4.1f} juegos{C_RST} (Margen +{exp_margin:.1f}g)"))
+    print(pad_line(f" ▶ TENDENCIA  : {C_BLD}{tot_dir_lbl}{C_RST} ({tot_dir_prob*100:4.1f}%)"))
     print(f"{DIV}")
 
-    # HOJA DE RUTA ESTRUCTURADA
-    piso_opts = [
-        (f"OVER {lines_list[0]:.1f}g", p_overs[0]),
-        (f"UNDER {lines_list[2]:.1f}g", p_unders[2]),
-        (f"{fav_winner} ML", max(match_win_a, match_win_b))
+    master_candidates = [
+        (f"{fav_name} ML", fav_prob),
+        (tot_dir_lbl, tot_dir_prob),
+        (top_set_lbl, top_set_prob)
     ]
-    piso_opts.sort(key=lambda x: x[1], reverse=True)
-    piso_lbl, piso_prob = piso_opts[0]
-    eq_lbl = f"UNDER {tot_line:.1f}g" if p_unders[1] >= p_overs[1] else f"OVER {tot_line:.1f}g"
-    eq_prob = max(p_unders[1], p_overs[1])
-    top_s_lbl, top_s_p = score_sets[0] if score_sets else ("N/A", 0.50)
-    top_c_lbl, top_c_p = combos[0] if combos else ("N/A", 0.50)
+    master_candidates.sort(key=lambda x: x[1], reverse=True)
+    master_lbl, master_prob = master_candidates[0]
 
-    print(pad_line(f"{C_GRN}🎯 HOJA DE RUTA (VALOR & EJECUCIÓN){C_RST}"))
-    print(pad_line(f" 1. PISO CERTEZA : {piso_lbl} ({piso_prob*100:4.1f}%) | Fair: {prob_to_decimal(piso_prob)}"))
-    print(pad_line(f" 2. EQUILIBRADA  : {eq_lbl} ({eq_prob*100:4.1f}%) | Fair: {prob_to_decimal(eq_prob)}"))
-    print(pad_line(f" 3. ASIMETRÍA SET: {top_s_lbl} ({top_s_p*100:4.1f}%) | Fair: {prob_to_decimal(top_s_p)}"))
-    print(pad_line(f" 4. COMBO CORREL : {top_c_lbl} ({top_c_p*100:4.1f}%) | Fair: {prob_to_decimal(top_c_p)}"))
-    print(f"{DIV}")
-
-    # GESTIÓN MULTI-MERCADO QUARTER-KELLY (12 MERCADOS AUDITADOS)
-    u_max_hardcap = bankroll * 0.04
-    print(pad_line(f"{C_YLW}GESTIÓN MULTI-MERCADO KELLY (BANK ${bankroll:.0f}){C_RST}"))
-    print(pad_line(f" • Hard Cap Máximo : 4.0% (${u_max_hardcap:.2f})"))
-    print(pad_line(" • Regla Disparo   : EV > +3.0% vs Soft"))
+    print(pad_line(f"{C_CYN}[3] ORDEN DE EJECUCIÓN (SIN RUIDO){C_RST}"))
+    print(pad_line(f" 🎯 JUGADA REINA: {C_GRN}{C_BLD}{master_lbl}{C_RST} ({master_prob*100:4.1f}%)"))
+    print(pad_line(f"    Cuota Justa : {prob_to_decimal(master_prob)} | Combo: {combos[0][0]}"))
 
     soft_p1 = parse_odds(soft.get("moneyline", {}).get("p1"))
     soft_p2 = parse_odds(soft.get("moneyline", {}).get("p2"))
@@ -1023,8 +1033,8 @@ def run_prediction_pipeline(payload: Dict[str, Any]):
     eval_markets = [
         (f"{s1} ML", match_win_a, soft_p1),
         (f"{s2} ML", match_win_b, soft_p2),
-        (f"OVER {tot_line:.1f}g", p_overs[1], soft_tot_ov),
-        (f"UNDER {tot_line:.1f}g", p_unders[1], soft_tot_un),
+        (f"OVER {tot_line:.1f}g", po_main, soft_tot_ov),
+        (f"UNDER {tot_line:.1f}g", pu_main, soft_tot_un),
         (f"{s1} 2-0", prob_map.get(f"{s1} 2-0", 0.0), parse_odds(soft_sb.get("2_0"))),
         (f"{s1} 2-1", prob_map.get(f"{s1} 2-1", 0.0), parse_odds(soft_sb.get("2_1"))),
         (f"{s2} 2-0", prob_map.get(f"{s2} 2-0", 0.0), parse_odds(soft_sb.get("0_2"))),
@@ -1035,29 +1045,38 @@ def run_prediction_pipeline(payload: Dict[str, Any]):
         (f"{s2} + Under", combo_map.get(f"{s2} + Under", 0.0), parse_odds(soft_cb.get("p2_under"))),
     ]
 
-    found_value = False
+    valid_kelly = []
     for m_tag, m_prob, s_odd in eval_markets:
-        if s_odd and s_odd > 1.0 and m_prob > 0.02:
-            edge = (m_prob * s_odd) - 1.0
-            if edge > 0.03:
-                b = s_odd - 1.0
-                k_fraction = max(0.0, (b * m_prob - (1.0 - m_prob)) / b)
-                stake_pct = min(0.04, 0.25 * k_fraction)
-                stake_val = stake_pct * bankroll
-                print(pad_line(f" {C_GRN}▶ +EV DETECTADO: {m_tag:<14} @ {s_odd:.2f}{C_RST}"))
-                print(pad_line(f"   Edge: +{edge*100:.1f}% | Stake: ${stake_val:.2f} ({stake_pct*100:.1f}%)"))
-                found_value = True
+        if not s_odd or s_odd <= 1.05 or s_odd > 4.50:
+            continue
+        if dog_name in m_tag and fav_prob >= 0.58:
+            continue
+        if m_prob < 0.35:
+            continue
+        edge = (m_prob * s_odd) - 1.0
+        if edge > 0.03:
+            b = s_odd - 1.0
+            k_fraction = max(0.0, (b * m_prob - (1.0 - m_prob)) / b)
+            stake_pct = min(0.04, 0.25 * k_fraction)
+            stake_val = stake_pct * bankroll
+            if stake_val >= 1.50:
+                valid_kelly.append((m_tag, m_prob, s_odd, edge, stake_val, stake_pct))
 
-    if not found_value:
-        print(pad_line(f" {C_RED}▶ SIN VALOR: Cuotas sin margen > +3.0% EV.{C_RST}"))
+    valid_kelly.sort(key=lambda x: x[1] * (1.0 + x[3]), reverse=True)
+
+    if valid_kelly:
+        print(f"{SUB}")
+        for m_tag, m_prob, s_odd, edge, stake_val, stake_pct in valid_kelly[:2]:
+            print(pad_line(f" {C_GRN}▶ DISPARO KELLY: {m_tag:<13} @ {s_odd:.2f}{C_RST}"))
+            print(pad_line(f"   Edge: +{edge*100:.1f}% | Stake: ${stake_val:.2f} ({stake_pct*100:.1f}%)"))
 
     t1 = time.perf_counter_ns()
     calc_ms = (t1 - t0) / 1_000_000.0
-    print(pad_line(f"{C_DIM}Runtime: {calc_ms:5.1f} ms | Afinidad A715 OK{C_RST}"))
+    print(f"{DIV}")
+    print(pad_line(f"{C_DIM}Leyes del Tiempo OK | {calc_ms:5.1f} ms | A715{C_RST}"))
     print(f"{C_CYN}{SEP}{C_RST}\n")
     sys.stdout.flush()
 
-# ━━━━━━━━━━━━━━ 12. ENTRADA CLI / STDIN DUAL ━━━━━━━━━━━━━━
 if __name__ == "__main__":
     raw_input = ""
     if len(sys.argv) > 1 and os.path.exists(sys.argv[1]):
