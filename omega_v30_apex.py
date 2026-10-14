@@ -6,14 +6,14 @@ OMEGA-QUANT v32 ARGON-APEX | UNIFIED SPACETIME & BIOMETRIC TENNIS ORACLE
 =============================================================================
 Arquitectura Unificada (v30 Apex + v32 Argon):
   • Leyes del Tiempo (Triple Decaimiento): 50% (18d) + 30% (55d) + 20% (240d).
-  • Vector de Aceleración Temporal: Momentum 60d vs Línea Base Histórica.
+  • Vector de Aceleración Temporal: Momentum 65d vs Línea Base Histórica.
   • Telemetría Biométrica Completa: 1st In, 1st Won, 2nd Won, Ace%, DF%,
     Break Point Save% (Anti-Luck) y Break Point Conversion% al Resto.
-  • Matriz Knottenbelt (Oponentes Comunes) + H2H Directo Ponderado por Tiempo.
+  • Ley de Aclimatación en Altura (>1000m) vs Debut en Frío (0m/72h).
+  • Escaneo Completo de Lateralidad Zurda ('L' ATP/WTA) en todos los CSVs.
   • Markov Intra-Set No-Estacionario: Ciclo de Pelotas (7/9j) + Tiebreak Exacto.
   • Trayectoria 4D (S1 -> S2 -> S3) con Fatiga 72h, Descanso y Deriva Térmica.
-  • Detector Automático de Trampa 50/50 (Auditoría de Mercado Derivado O/U,
-    2-0 vs 2-1 y Combos + Choque de Estilos Counterpuncher vs Striker).
+  • Protección Anti-Trampa en Altitud/Rally Corto + Candado Sharp de Pinnacle.
   • Salida Cero-Ruido (42 cols POCO X6 Pro) + Filtro Institucional Quarter-Kelly.
 =============================================================================
 """
@@ -79,9 +79,12 @@ KNOWN_HANDEDNESS = {
     "nadal": "L", "shapovalov": "L", "norrie": "L", "mannarino": "L",
     "umbert": "L", "shelton": "L", "cerundolo": "L", "juan manuel cerundolo": "L",
     "albert ramos": "L", "nishioka": "L", "thiago monteiro": "L", "draper": "L",
-    "tien": "L", "tabilo": "L", "bellucci": "L", "alcaraz": "R", "sinner": "R",
-    "djokovic": "R", "medvedev": "R", "zverev": "R", "rublev": "R",
-    "de minaur": "R", "minaur": "R", "khachanov": "R"
+    "tien": "L", "tabilo": "L", "bellucci": "L", "kayla day": "L", "day": "L",
+    "fernandez": "L", "leylah fernandez": "L", "haddad maia": "L", "trevisan": "L",
+    "danilovic": "L", "shnaider": "L", "vondrousova": "L", "kvitova": "L",
+    "kerber": "L", "rus": "L", "arango": "R", "samsonova": "R", "jacquemot": "R",
+    "alcaraz": "R", "sinner": "R", "djokovic": "R", "medvedev": "R",
+    "zverev": "R", "rublev": "R", "de minaur": "R", "minaur": "R", "khachanov": "R"
 }
 
 # ━━━━━━━━━━━━━━ 1. LEYES DEL TIEMPO (TRIPLE DECAIMIENTO EXPONENCIAL) ━━━━━━━━━━━━━━
@@ -178,8 +181,10 @@ def detect_handedness(player_name: str, files: List[str]) -> str:
     for k, h in KNOWN_HANDEDNESS.items():
         if k in clean_p:
             return h
-    last_name = clean_p.split()[-1] if clean_p else ""
-    for path in sorted(files)[:3]:
+    tokens = clean_p.split()
+    last_name = tokens[-1] if tokens else ""
+    first_init = tokens[0][0] if tokens and tokens[0] else ""
+    for path in sorted(files, reverse=True):
         try:
             with open(path, mode="r", encoding="utf-8", errors="ignore") as f:
                 cols = [c.strip() for c in f.readline().lower().split(",")]
@@ -190,11 +195,13 @@ def detect_handedness(player_name: str, files: List[str]) -> str:
                 for line in f:
                     if last_name in line.lower():
                         p = line.split(",")
-                        if w_i != -1 and wh_i != -1 and len(p) > max(w_i, wh_i) and last_name in p[w_i].lower():
-                            if p[wh_i].strip() in ("L", "R"):
+                        if w_i != -1 and wh_i != -1 and len(p) > max(w_i, wh_i):
+                            wc = clean_str(p[w_i])
+                            if last_name in wc and (not first_init or first_init in wc) and p[wh_i].strip() in ("L", "R"):
                                 return p[wh_i].strip()
-                        if l_i != -1 and lh_i != -1 and len(p) > max(l_i, lh_i) and last_name in p[l_i].lower():
-                            if p[lh_i].strip() in ("L", "R"):
+                        if l_i != -1 and lh_i != -1 and len(p) > max(l_i, lh_i):
+                            lc = clean_str(p[l_i])
+                            if last_name in lc and (not first_init or first_init in lc) and p[lh_i].strip() in ("L", "R"):
                                 return p[lh_i].strip()
         except Exception:
             continue
@@ -371,7 +378,6 @@ def _resolve_dna_core(player_in: str, opp_in: str, surf: str, circuit: str) -> T
     return mean_spw, mean_rpw, 0, f"PRIOR-{circuit}", hand, PlayerBioProfile()
 
 def resolve_hierarchical_dna(player_in: str, opp_in: str, surf: str = "Hard", circuit: Optional[str] = None):
-    """Compatibilidad dual: 4 args (motor principal) y 3 args (scripts backtest/optuna)."""
     if circuit is None:
         res = _resolve_dna_core(player_in, "", str(opp_in), str(surf).upper())
         return res[:5]
@@ -484,12 +490,17 @@ def analytical_set_matrix(pa_srv: float, pb_srv: float, set_num: int = 1) -> Tup
     comb = {k: 0.5 * d0.get(k, 0.0) + 0.5 * d1.get(k, 0.0) for k in set(d0).union(d1)}
     return comb, sum(prob for (i, j), prob in comb.items() if i > j)
 
-def split_set_games_pmf(set_matrix: Dict[Tuple[int, int], float], is_under_bias: bool) -> Tuple[np.ndarray, np.ndarray]:
+def split_set_games_pmf(set_matrix: Dict[Tuple[int, int], float], is_under_bias: bool, is_high_alt_short: bool = False) -> Tuple[np.ndarray, np.ndarray]:
     ga_pmf, gb_pmf = np.zeros(14, dtype=np.float64), np.zeros(14, dtype=np.float64)
     for (ga, gb), pr in set_matrix.items():
         g = ga + gb
         if g < 14:
-            w = (0.58 if g >= 12 else (1.36 if g in (7, 8, 9, 10) else 1.0)) if is_under_bias else 1.0
+            if is_high_alt_short:
+                w = 1.24 if g >= 12 else (0.85 if g <= 8 else 1.0)
+            elif is_under_bias:
+                w = 0.58 if g >= 12 else (1.36 if g in (7, 8, 9, 10) else 1.0)
+            else:
+                w = 1.0
             if ga > gb:
                 ga_pmf[g] += pr * w
             else:
@@ -560,13 +571,10 @@ def sum_above(dist: np.ndarray, thresh: float) -> float:
     return float(np.sum(dist[np.arange(len(dist)) > thresh]))
 
 def eval_4d_trajectory(bar_p: float, delta_d: float, decay_a: float, decay_b: float, drift: float, best_of: int):
-    # S1: Inicio fresco (sin bonificar erróneamente al jugador más fatigado)
     pa1 = max(0.35, min(0.82, bar_p + delta_d - 0.25 * decay_a))
     pb1 = max(0.35, min(0.82, bar_p - delta_d - 0.25 * decay_b))
-    # S2: Desgaste acumulado + deriva térmica
     pa2 = max(0.35, min(0.82, pa1 - decay_a + 0.5 * drift))
     pb2 = max(0.35, min(0.82, pb1 - decay_b + 0.5 * drift))
-    # S3: Erosión crítica de 3er set
     pa3 = max(0.35, min(0.82, pa2 - 1.35 * decay_a + 0.5 * drift))
     pb3 = max(0.35, min(0.82, pb2 - 1.35 * decay_b + 0.5 * drift))
 
@@ -586,7 +594,7 @@ def eval_4d_trajectory(bar_p: float, delta_d: float, decay_a: float, decay_b: fl
         p20a = p21a = p20b = p21b = 0.0
     return m_win_a, (pa1, pb1, pa2, pb2, pa3, pb3), (m1, m2, m3), (ps1, ps2, ps3), (p20a, p21a, p20b, p21b)
 
-# ━━━━━━━━━━━━━━ 5. PIPELINE MAESTRO (DETECTOR DE TRAMPA 50/50 + ORÁCULO 4D) ━━━━━━━━━━━━━━
+# ━━━━━━━━━━━━━━ 5. PIPELINE MAESTRO (ACLIMATACIÓN + ALTITUD + ORÁCULO 4D) ━━━━━━━━━━━━━━
 def run_prediction_pipeline(payload: Dict[str, Any]):
     t0 = time.perf_counter_ns()
     ev = payload.get("event", {})
@@ -602,7 +610,7 @@ def run_prediction_pipeline(payload: Dict[str, Any]):
     s1, s2 = p1_name.strip().split()[-1][:10], p2_name.strip().split()[-1][:10]
 
     physics = resolve_physics(tourn, city_f, env, session_time)
-    d_env, drift = physics["delta_env"], physics["thermal_drift"]
+    d_env, drift, elev = physics["delta_env"], physics["thermal_drift"], physics["elev"]
 
     spw_a, rpw_a, pts_a, _, hand_a, prof_a = _resolve_dna_core(p1_name, p2_name, surf, circuit)
     spw_b, rpw_b, pts_b, _, hand_b, prof_b = _resolve_dna_core(p2_name, p1_name, surf, circuit)
@@ -616,8 +624,10 @@ def run_prediction_pipeline(payload: Dict[str, Any]):
     boost_a = d_env * math.pow(spw_a / mean_spw, 1.1) * ace_f_a
     boost_b = d_env * math.pow(spw_b / mean_spw, 1.1) * ace_f_b
 
-    tac_a = (0.008 if "hard" in surf.lower() else 0.012) if (hand_a == "L" and hand_b == "R") else (-0.005 if (hand_b == "L" and hand_a == "R") else 0.0)
-    tac_b = (0.008 if "hard" in surf.lower() else 0.012) if (hand_b == "L" and hand_a == "R") else (-0.005 if (hand_a == "L" and hand_b == "R") else 0.0)
+    # Ventaja de zurdo ('L') amplificada en altitud elevada (>1000m)
+    lefty_bonus = (0.011 if elev >= 1000 else 0.008) if "hard" in surf.lower() else 0.012
+    tac_a = lefty_bonus if (hand_a == "L" and hand_b == "R") else (-0.005 if (hand_b == "L" and hand_a == "R") else 0.0)
+    tac_b = lefty_bonus if (hand_b == "L" and hand_a == "R") else (-0.005 if (hand_a == "L" and hand_b == "R") else 0.0)
 
     t_scout = ev.get("tactical_matchup", {})
     p1_st, p2_st = str(t_scout.get("p1_style", "")).lower(), str(t_scout.get("p2_style", "")).lower()
@@ -642,17 +652,33 @@ def run_prediction_pipeline(payload: Dict[str, Any]):
     p1_f14 = max(-1.0, min(1.0, float(tc.get("p1_form_14d", 0.0))))
     p2_f14 = max(-1.0, min(1.0, float(tc.get("p2_form_14d", 0.0))))
     r_prof = str(tc.get("avg_rally_profile", "medium")).lower()
-    r_mult = 1.35 if "long" in r_prof else (0.80 if "short" in r_prof else 1.0)
+    r_mult = 1.35 if "long" in r_prof else (0.75 if "short" in r_prof else 1.0)
 
+    # Ley de Fatiga vs Recuperación Completa (>=36h de descanso absorbe carga normal <=135m)
     def calc_decay(m72: float, rest: float, st: str) -> float:
-        load = max(0.0, (m72 - 80.0) / 150.0) * 0.014
+        eff_mins = max(0.0, m72 - (135.0 if rest >= 36.0 else 80.0))
+        load = (eff_mins / 150.0) * 0.014
         r_pen = max(0.0, (26.0 - rest) / 10.0) * 0.009 if rest < 26.0 else 0.0
-        s_burn = 0.005 if any(k in st for k in ("server", "aggressive", "erratic", "fragile")) else 0.0015
+        s_burn = 0.0045 if any(k in st for k in ("server", "aggressive", "erratic", "fragile")) else 0.0015
+        if rest >= 40.0 and m72 <= 135.0:
+            s_burn *= 0.50
         return (load + r_pen + s_burn) * r_mult
 
     decay_a, decay_b = calc_decay(p1_m72, p1_rest, p1_st), calc_decay(p2_m72, p2_rest, p2_st)
 
-    # Ventaja por diferencial de fatiga 72h y forma de 14 días (aplicada desde el inicio)
+    # Ley de Aclimatación en Altura (>1000m): Ritmo de cancha (45-150m con buen descanso) vs Debut en Frío (0m)
+    acclim_a, acclim_b = 0.0, 0.0
+    cold_alt_debut = False
+    if elev >= 1000:
+        if 45.0 <= p1_m72 <= 155.0 and p1_rest >= 30.0 and p2_m72 == 0.0:
+            acclim_a += 0.012
+            acclim_b -= 0.010
+            cold_alt_debut = True
+        elif 45.0 <= p2_m72 <= 155.0 and p2_rest >= 30.0 and p1_m72 == 0.0:
+            acclim_b += 0.012
+            acclim_a -= 0.010
+            cold_alt_debut = True
+
     fatigue_edge_a = (decay_b - decay_a) * 1.40
     form_edge_a = (p1_f14 - p2_f14) * 0.035
 
@@ -660,16 +686,18 @@ def run_prediction_pipeline(payload: Dict[str, Any]):
     if prof_a.h2h_weight_tot > 0:
         h2h_a = ((prof_a.h2h_weight_wins / prof_a.h2h_weight_tot) - 0.50) * min(0.022, 0.007 * prof_a.h2h_matches)
 
-    pa_base = spw_a - (rpw_b - mean_rpw) + boost_a + tac_a + knotten + h2h_a + (form_edge_a / 2.0) + (fatigue_edge_a / 2.0)
-    pb_base = spw_b - (rpw_a - mean_rpw) + boost_b + tac_b - knotten - h2h_a - (form_edge_a / 2.0) - (fatigue_edge_a / 2.0)
+    pa_base = spw_a - (rpw_b - mean_rpw) + boost_a + tac_a + knotten + h2h_a + acclim_a + (form_edge_a / 2.0) + (fatigue_edge_a / 2.0)
+    pb_base = spw_b - (rpw_a - mean_rpw) + boost_b + tac_b - knotten - h2h_a + acclim_b - (form_edge_a / 2.0) - (fatigue_edge_a / 2.0)
     lo_b, hi_b = (0.420, 0.680) if circuit == "WTA" else (0.460, 0.760)
     pa_base, pb_base = min(hi_b, max(lo_b, pa_base)), min(hi_b, max(lo_b, pb_base))
 
-    # ━━━━━━━━━━━━━━ AUDITORÍA FORENSE DE SEÑALES DE MERCADO DERIVADO ━━━━━━━━━━━━━━
+    # ━━━━━━━━━━━━━━ AUDITORÍA FORENSE DE SEÑALES DE MERCADO Y ALTITUD ━━━━━━━━━━━━━━
     pin_p1 = parse_odds(pinn.get("moneyline", {}).get("p1"))
     pin_p2 = parse_odds(pinn.get("moneyline", {}).get("p2"))
     tot_line = parse_spread(pinn.get("games_total", {}).get("line")) or parse_spread(soft.get("games_total", {}).get("line")) or (38.5 if best_of == 5 else 22.5)
 
+    soft_p1 = parse_odds(soft.get("moneyline", {}).get("p1"))
+    soft_p2 = parse_odds(soft.get("moneyline", {}).get("p2"))
     soft_ov = parse_odds(soft.get("games_total", {}).get("over"))
     soft_un = parse_odds(soft.get("games_total", {}).get("under"))
     soft_sb = soft.get("set_betting", {})
@@ -684,24 +712,27 @@ def run_prediction_pipeline(payload: Dict[str, Any]):
     odd_p2_ov = parse_odds(soft_cb.get("p2_over"))
     odd_p2_un = parse_odds(soft_cb.get("p2_under"))
 
-    # Detectar si las cuotas derivadas (Under, 2-0, Combos) revelan asimetría Under aunque el JSON diga "over"
+    # En Altitud (>=1000m) con Rally Corto ("short") o Debut en Frío de la favorita, el saque domina y hay alto riesgo de Tiebreak/3er Set
+    is_high_alt_short = (elev >= 1000 and ("short" in r_prof or cold_alt_debut))
+
     mkt_under_signals = 0
-    if soft_un and soft_ov and soft_un < soft_ov:
-        mkt_under_signals += 1
-    if odd_p1_un and odd_p1_ov and odd_p1_un < odd_p1_ov:
-        mkt_under_signals += 1
-    if odd_20 and odd_21 and (odd_21 - odd_20) >= 0.85:
-        mkt_under_signals += 1
-    if is_style_clash_a or is_style_clash_b or ("long" in r_prof and abs(p1_m72 - p2_m72) >= 20):
-        mkt_under_signals += 1
+    if not is_high_alt_short:
+        if soft_un and soft_ov and soft_un < soft_ov:
+            mkt_under_signals += 1
+        if odd_p1_un and odd_p1_ov and odd_p1_un < odd_p1_ov:
+            mkt_under_signals += 1
+        if odd_20 and odd_21 and (odd_21 - odd_20) >= 0.85:
+            mkt_under_signals += 1
+        if (is_style_clash_a or is_style_clash_b) and "long" in r_prof and abs(p1_m72 - p2_m72) >= 20 and min(p1_rest, p2_rest) < 30.0:
+            mkt_under_signals += 2
 
-    # Si hay >=2 señales estructurales de Under/Sets Corridos, se anula la trampa 50/50 de Over
-    auto_under_override = (mkt_under_signals >= 2)
-    is_under_bias = ("under" in tac_bias or "asymmetric" in exp_shape or auto_under_override)
+    auto_under_override = (mkt_under_signals >= 2 and not is_high_alt_short)
+    is_under_bias = (("under" in tac_bias or "asymmetric" in exp_shape or auto_under_override) and not is_high_alt_short)
 
-    # Calibración del baricentro de saque (evitando inflar Holds a 85% por líneas de 23.5)
     bar_p = (pa_base + pb_base) / 2.0
-    if is_under_bias:
+    if is_high_alt_short:
+        bar_p = min(0.73, bar_p + (0.016 if circuit == "WTA" else 0.014))
+    elif is_under_bias:
         bar_p = max(0.48, bar_p - (0.018 if circuit == "WTA" else 0.024))
     elif "over" in tac_bias and not auto_under_override:
         bar_p = min(0.71, bar_p + 0.010)
@@ -709,24 +740,12 @@ def run_prediction_pipeline(payload: Dict[str, Any]):
     raw_delta = (pa_base - pb_base) / 2.0
     p_match_raw, _, _, _, _ = eval_4d_trajectory(bar_p, raw_delta, decay_a, decay_b, drift, best_of)
 
-    # Probabilidad implícita en mercados derivados de Sets (2-0/2-1 vs 0-2/1-2)
-    p_deriv_a = None
-    if odd_20 and odd_21 and odd_02 and odd_12:
-        inv_a = (1.0 / odd_20) + (1.0 / odd_21)
-        inv_b = (1.0 / odd_02) + (1.0 / odd_12)
-        if (inv_a + inv_b) > 0:
-            p_deriv_a = inv_a / (inv_a + inv_b)
-
     if pin_p1 and pin_p2:
         p_shin_a, _, _ = shin_solve_2way(pin_p1, pin_p2)
-        if p_deriv_a is not None:
-            p_shin_a = 0.75 * p_shin_a + 0.25 * p_deriv_a
-
         min_pts = min(pts_a, pts_b)
         w_micro = min(0.45, 0.16 + 0.29 * (min_pts / 6000.0)) if min_pts > 0 else 0.20
-        # Cuando hay divergencia fuerte en fatiga 72h, forma 14d o choque táctico, el Oráculo toma el mando
-        if abs(decay_a - decay_b) >= 0.004 or abs(p1_f14 - p2_f14) >= 0.08 or is_style_clash_a or is_style_clash_b:
-            w_micro = max(w_micro, 0.52)
+        if abs(decay_a - decay_b) >= 0.004 or abs(p1_f14 - p2_f14) >= 0.08 or is_style_clash_a or is_style_clash_b or cold_alt_debut:
+            w_micro = max(w_micro, 0.48)
 
         p_target_a = (1.0 - w_micro) * p_shin_a + w_micro * p_match_raw
         low_d, high_d = -0.25, 0.25
@@ -752,17 +771,23 @@ def run_prediction_pipeline(payload: Dict[str, Any]):
     hold_a = markov_hold((pa_s1 + pa_s2) / 2.0) * 100.0
     hold_b = markov_hold((pb_s1 + pb_s2) / 2.0) * 100.0
     fav_prob = max(match_win_a, match_win_b)
-    if fav_prob >= 0.66:
+    if fav_prob >= 0.72 and not is_high_alt_short:
         is_under_bias = True
 
-    s1_ga, s1_gb = split_set_games_pmf(mat_s1, is_under_bias)
-    s2_ga, s2_gb = split_set_games_pmf(mat_s2, is_under_bias)
-    s3_ga, s3_gb = split_set_games_pmf(mat_s3, is_under_bias)
+    s1_ga, s1_gb = split_set_games_pmf(mat_s1, is_under_bias, is_high_alt_short)
+    s2_ga, s2_gb = split_set_games_pmf(mat_s2, is_under_bias, is_high_alt_short)
+    s3_ga, s3_gb = split_set_games_pmf(mat_s3, is_under_bias, is_high_alt_short)
 
     top_s1_label, top_s1_prob = "6-4", 0.0
     for (i, j), prob in mat_s1.items():
         g = i + j
-        p_eff = prob * ((0.58 if g >= 12 else (1.36 if g in (7, 8, 9, 10) else 1.0)) if is_under_bias else 1.0)
+        if is_high_alt_short:
+            w_s1 = 1.25 if g >= 12 else (0.85 if g <= 8 else 1.0)
+        elif is_under_bias:
+            w_s1 = 0.58 if g >= 12 else (1.36 if g in (7, 8, 9, 10) else 1.0)
+        else:
+            w_s1 = 1.0
+        p_eff = prob * w_s1
         if p_eff > top_s1_prob:
             top_s1_prob = p_eff
             top_s1_label = f"{max(i, j)}-{min(i, j)} {s1 if i > j else s2}"
@@ -788,11 +813,11 @@ def run_prediction_pipeline(payload: Dict[str, Any]):
         p_ov_b = p30b * sum_above(c30b, tot_line) + p31b * sum_above(c31b, tot_line) + p32b * sum_above(c32b, tot_line)
         p_un_b = p30b * sum_below(c30b, tot_line) + p31b * sum_below(c31b, tot_line) + p32b * sum_below(c32b, tot_line)
     else:
-        # Compresión anti-trampa 50/50 hacia sets corridos (2-0) conservando suma exacta de ganador
-        k_str = 0.28 if is_under_bias else 0.06
-        p_2_1_a = p_2_1_a_raw * (1.0 - k_str)
+        # En Altitud + Debut en Frío / Rally Corto, aumenta la volatilidad de 3er set (k_str negativo)
+        k_str = -0.15 if is_high_alt_short else (0.28 if is_under_bias else 0.06)
+        p_2_1_a = min(match_win_a * 0.65, p_2_1_a_raw * (1.0 - k_str))
         p_2_0_a = max(0.0, match_win_a - p_2_1_a)
-        p_2_1_b = p_2_1_b_raw * (1.0 - k_str)
+        p_2_1_b = min(match_win_b * 0.65, p_2_1_b_raw * (1.0 - k_str))
         p_2_0_b = max(0.0, match_win_b - p_2_1_b)
         score_sets = [(f"{s1} 2-0", p_2_0_a), (f"{s1} 2-1", p_2_1_a), (f"{s2} 2-0", p_2_0_b), (f"{s2} 2-1", p_2_1_b)]
         c_20_a = np.convolve(s1_ga, s2_ga)
@@ -835,7 +860,7 @@ def run_prediction_pipeline(payload: Dict[str, Any]):
     print(pad_line(f" {C_CYN}{C_BLD}OMEGA v32 ARGON-APEX{C_RST} | {C_YLW}ORÁCULO 4D{C_RST}"))
     print(f"{C_CYN}{DIV}{C_RST}")
     print(pad_line(f" {C_BLD}{p1_name}{C_RST} vs {C_BLD}{p2_name}{C_RST}"))
-    print(pad_line(f" {circuit} {tourn[:14]} | {surf} | {session_time[:8].upper()}"))
+    print(pad_line(f" {circuit} {tourn[:14]} | {surf} | {elev}m"))
     print(f"{DIV}")
     print(pad_line(f"{C_YLW}[1] CURVATURA TEMPORAL (SET 1 -> SET 3){C_RST}"))
     print(pad_line(f" • {s1:<10}: S1 {p_set1_a*100:4.1f}% -> S3 {p_set3_a*100:4.1f}% | Hold {hold_a:4.1f}%"))
@@ -846,7 +871,11 @@ def run_prediction_pipeline(payload: Dict[str, Any]):
     print(pad_line(f" ▶ MARCADOR   : {C_BLD}{top_set_lbl}{C_RST} ({top_set_prob*100:4.1f}%) | S1: {top_s1_label}"))
     print(pad_line(f" ▶ TOTAL PROY : {C_BLD}{exp_total_games:4.1f} juegos{C_RST} (3er Set: {p_3rd*100:4.1f}%)"))
     print(pad_line(f" ▶ TENDENCIA  : {C_BLD}{tot_dir_lbl}{C_RST} ({tot_dir_prob*100:4.1f}%)"))
-    if min(drop_a, drop_b) <= -2.5:
+    if cold_alt_debut:
+        cold_p = s2 if p2_m72 == 0 else s1
+        acc_p = s1 if p2_m72 == 0 else s2
+        print(pad_line(f" {C_YLW}⚠ ALERTA {elev}m: {acc_p} aclimatado vs {cold_p} debut (Riesgo TB/Over){C_RST}"))
+    elif min(drop_a, drop_b) <= -2.5:
         tired_p = s1 if drop_a < drop_b else s2
         print(pad_line(f" {C_RED}⚠ FATIGA 72H : {tired_p} cae {min(drop_a, drop_b):.1f}% hacia el Set 3{C_RST}"))
     print(f"{DIV}")
@@ -867,27 +896,29 @@ def run_prediction_pipeline(payload: Dict[str, Any]):
     prob_map = {lbl.strip(): p for lbl, p in score_sets}
     combo_map = {lbl.strip(): p for lbl, p in combos}
     eval_markets = [
-        (f"{s1} ML", match_win_a, parse_odds(soft.get("moneyline", {}).get("p1"))),
-        (f"{s2} ML", match_win_b, parse_odds(soft.get("moneyline", {}).get("p2"))),
-        (f"OVER {tot_line:.1f}g", po_main, soft_ov),
-        (f"UNDER {tot_line:.1f}g", pu_main, soft_un),
-        (f"{s1} 2-0", prob_map.get(f"{s1} 2-0", 0.0), odd_20),
-        (f"{s1} 2-1", prob_map.get(f"{s1} 2-1", 0.0), odd_21),
-        (f"{s2} 2-0", prob_map.get(f"{s2} 2-0", 0.0), odd_02),
-        (f"{s2} 2-1", prob_map.get(f"{s2} 2-1", 0.0), odd_12),
-        (f"{s1} + Over", combo_map.get(f"{s1} + Over", 0.0), odd_p1_ov),
-        (f"{s1} + Under", combo_map.get(f"{s1} + Under", 0.0), odd_p1_un),
-        (f"{s2} + Over", combo_map.get(f"{s2} + Over", 0.0), odd_p2_ov),
-        (f"{s2} + Under", combo_map.get(f"{s2} + Under", 0.0), odd_p2_un),
+        (f"{s1} ML", match_win_a, soft_p1, pin_p1),
+        (f"{s2} ML", match_win_b, soft_p2, pin_p2),
+        (f"OVER {tot_line:.1f}g", po_main, soft_ov, None),
+        (f"UNDER {tot_line:.1f}g", pu_main, soft_un, None),
+        (f"{s1} 2-0", prob_map.get(f"{s1} 2-0", 0.0), odd_20, None),
+        (f"{s1} 2-1", prob_map.get(f"{s1} 2-1", 0.0), odd_21, None),
+        (f"{s2} 2-0", prob_map.get(f"{s2} 2-0", 0.0), odd_02, None),
+        (f"{s2} 2-1", prob_map.get(f"{s2} 2-1", 0.0), odd_12, None),
+        (f"{s1} + Over", combo_map.get(f"{s1} + Over", 0.0), odd_p1_ov, None),
+        (f"{s1} + Under", combo_map.get(f"{s1} + Under", 0.0), odd_p1_un, None),
+        (f"{s2} + Over", combo_map.get(f"{s2} + Over", 0.0), odd_p2_ov, None),
+        (f"{s2} + Under", combo_map.get(f"{s2} + Under", 0.0), odd_p2_un, None),
     ]
 
     valid_kelly = []
-    for m_tag, m_prob, s_odd in eval_markets:
+    for m_tag, m_prob, s_odd, p_sharp_odd in eval_markets:
         if not s_odd or s_odd <= 1.05 or s_odd > 4.50 or m_prob < 0.36:
+            continue
+        # Candado Sharp Institucional: Nunca apostar Moneyline en casa Soft si paga peor que Pinnacle
+        if p_sharp_odd and s_odd < (p_sharp_odd - 0.02):
             continue
         if dog_name in m_tag and fav_prob >= 0.54:
             continue
-        # Bloquear Over si el dictamen estructural es Under (y viceversa)
         if "OVER" in m_tag.upper() and pu_main > po_main:
             continue
         if "UNDER" in m_tag.upper() and po_main > pu_main:
