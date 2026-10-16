@@ -5,8 +5,9 @@
 ARGON-APEX v54 // ALTENAR DEEP-EXTRACTOR, GAUSSIAN COPULA + IPF & DAILY COMPOUNDER
 =============================================================================
 Optimizado para Termux en POCO X6 Pro (Dimensity 8300-Ultra, Cortex-A715 cores 4-7).
+Diseño visual: Tarjetas móviles de 38 columnas sin saltos de línea partidos.
 Integra:
-  1. Desviggeo exacto de Shin (1992) sobre Pinnacle Arcadia API.
+  1. Desviggeo exacto de Shin (1992) sobre cuotas Sharp de Pinnacle Arcadia API.
   2. Parser relacional profundo de Altenar (oddIds, desktopOddIds, childMarkets, Combos).
   3. Motor Markov 4D (Bo3 y Bo5) + Cópula Gaussiana + IPF bivariado para Ganador + Total.
   4. Filtro Campo Minado Anti-Vig (bloquea cuotas < 1.68 o EV negativo en TriunfoBet).
@@ -19,7 +20,6 @@ import sys
 import json
 import math
 import time
-import random
 import unicodedata
 from functools import lru_cache
 from datetime import datetime, timezone, timedelta
@@ -43,6 +43,7 @@ OPT_K_STR_UNDER = 0.135
 OPT_K_STR_BASE = 0.035
 OPT_KELLY_FRAC = 0.28
 MIN_ALLOWED_TRIG_DEC = 1.68
+W_CARD = 38
 
 C_RST, C_BLD, C_CYN = "\033[0m", "\033[1m", "\033[1;36m"
 C_GRN, C_RED, C_YLW, C_MAG, C_WHT = "\033[1;32m", "\033[1;31m", "\033[1;33m", "\033[1;35m", "\033[1;37m"
@@ -544,8 +545,8 @@ def analyze_match_best_play(
         if abs(real_tot_line - primary_tot_line) < 0.5:
             pred_tot_str = f"Más de {real_tot_line:.1f} Juegos" if p_ov >= p_un else f"Menos de {real_tot_line:.1f} Juegos"
             pred_tot_pct = round(max(p_ov, p_un) * 100.0, 1)
-        candidates.append({"cat": "TOTAL JUEGOS", "play": f"Más de {real_tot_line:.1f} Juegos [Pestaña Principal]", "pr": p_ov, "pin_pr": p_ov_pin or p_ov_mkv, "base": (1.0 / alt_ov_odd) if alt_ov_odd else 0.50, "alt_odd": alt_ov_odd})
-        candidates.append({"cat": "TOTAL JUEGOS", "play": f"Menos de {real_tot_line:.1f} Juegos [Pestaña Principal]", "pr": p_un, "pin_pr": (1.0 - p_ov_pin) if p_ov_pin else p_un_mkv, "base": (1.0 / alt_un_odd) if alt_un_odd else 0.50, "alt_odd": alt_un_odd})
+        candidates.append({"cat": "TOTAL JUEGOS", "play": f"Más de {real_tot_line:.1f} Juegos", "pr": p_ov, "pin_pr": p_ov_pin or p_ov_mkv, "base": (1.0 / alt_ov_odd) if alt_ov_odd else 0.50, "alt_odd": alt_ov_odd})
+        candidates.append({"cat": "TOTAL JUEGOS", "play": f"Menos de {real_tot_line:.1f} Juegos", "pr": p_un, "pin_pr": (1.0 - p_ov_pin) if p_ov_pin else p_un_mkv, "base": (1.0 / alt_un_odd) if alt_un_odd else 0.50, "alt_odd": alt_un_odd})
 
     hcap_lines_map: Dict[float, Tuple[Optional[float], Optional[float]]] = {}
     if alt_match and alt_match.get("hcap_lines"):
@@ -569,8 +570,8 @@ def analyze_match_best_play(
             p_hcap_fav_pin = ph1 if fav_is_p1 else ph2
         ph_fav = (w_pin * p_hcap_fav_pin + (1.0 - w_pin) * ph_fav_mkv) if p_hcap_fav_pin is not None else ph_fav_mkv
         ph_dog = 1.0 - ph_fav
-        candidates.append({"cat": "HÁNDICAP JUEGO", "play": f"Hándicap {s_fav_short} {habs:+.1f} Juegos [Pestaña Principal]", "pr": ph_fav, "pin_pr": p_hcap_fav_pin or ph_fav_mkv, "base": (1.0 / alt_hc_fav_odd) if alt_hc_fav_odd else 0.50, "alt_odd": alt_hc_fav_odd})
-        candidates.append({"cat": "HÁNDICAP JUEGO", "play": f"Hándicap {s_dog_short} {-habs:+.1f} Juegos [Pestaña Principal]", "pr": ph_dog, "pin_pr": (1.0 - p_hcap_fav_pin) if p_hcap_fav_pin else ph_dog_mkv, "base": (1.0 / alt_hc_dog_odd) if alt_hc_dog_odd else 0.50, "alt_odd": alt_hc_dog_odd})
+        candidates.append({"cat": "HÁNDICAP JUEGO", "play": f"Hándicap {s_fav_short} {habs:+.1f} Juegos", "pr": ph_fav, "pin_pr": p_hcap_fav_pin or ph_fav_mkv, "base": (1.0 / alt_hc_fav_odd) if alt_hc_fav_odd else 0.50, "alt_odd": alt_hc_fav_odd})
+        candidates.append({"cat": "HÁNDICAP JUEGO", "play": f"Hándicap {s_dog_short} {-habs:+.1f} Juegos", "pr": ph_dog, "pin_pr": (1.0 - p_hcap_fav_pin) if p_hcap_fav_pin else ph_dog_mkv, "base": (1.0 / alt_hc_dog_odd) if alt_hc_dog_odd else 0.50, "alt_odd": alt_hc_dog_odd})
 
     sb = alt_match.get("set_betting", {}) if alt_match else {}
     if best_of == 3:
@@ -578,8 +579,8 @@ def analyze_match_best_play(
         odd_21_fav = sb.get("2-1") if alt_fav_is_p1 else sb.get("1-2")
         pr_20 = (w_pin * p20_pin_sharp + (1.0 - w_pin) * p20a) if p20_pin_sharp is not None else p20a
         pr_21 = (w_pin * p21_pin_sharp + (1.0 - w_pin) * p21a) if p21_pin_sharp is not None else p21a
-        candidates.append({"cat": "MARCADOR EXACTO", "play": f"Marcador Exacto 2:0 Sets ({s_fav_short}) [Pestaña Principal]", "pr": pr_20, "pin_pr": p20_pin_sharp or p20a, "base": (1.0 / odd_20_fav) if odd_20_fav else (ps1 * ps2), "alt_odd": odd_20_fav})
-        candidates.append({"cat": "MARCADOR EXACTO", "play": f"Marcador Exacto 2:1 Sets ({s_fav_short}) [Pestaña Principal]", "pr": pr_21, "pin_pr": p21_pin_sharp or p21a, "base": (1.0 / odd_21_fav) if odd_21_fav else p21a, "alt_odd": odd_21_fav})
+        candidates.append({"cat": "MARCADOR EXACTO", "play": f"Marcador Exacto 2:0 Sets ({s_fav_short})", "pr": pr_20, "pin_pr": p20_pin_sharp or p20a, "base": (1.0 / odd_20_fav) if odd_20_fav else (ps1 * ps2), "alt_odd": odd_20_fav})
+        candidates.append({"cat": "MARCADOR EXACTO", "play": f"Marcador Exacto 2:1 Sets ({s_fav_short})", "pr": pr_21, "pin_pr": p21_pin_sharp or p21a, "base": (1.0 / odd_21_fav) if odd_21_fav else p21a, "alt_odd": odd_21_fav})
 
     alt_combos = alt_match.get("combos", {}) if alt_match else {}
     if primary_tot_line is not None and (not has_live_markets or bool(alt_combos)):
@@ -587,9 +588,9 @@ def analyze_match_best_play(
         c_line = float(alt_combos.get("line", primary_tot_line))
         fav_u_odd = alt_combos.get("p1_under") if alt_fav_is_p1 else alt_combos.get("p2_under")
         fav_o_odd = alt_combos.get("p1_over") if alt_fav_is_p1 else alt_combos.get("p2_over")
-        candidates.append({"cat": "GANADOR + TOTAL", "play": f"{s_fav_short} Gana y Menos de {c_line:.1f} Juegos [Combo Correlacionado]", "pr": joint_probs["fav_under"], "pin_pr": joint_probs["fav_under"], "base": (1.0 / fav_u_odd) if fav_u_odd else (p_fav * 0.50), "alt_odd": fav_u_odd})
+        candidates.append({"cat": "GANADOR + TOTAL", "play": f"{s_fav_short} Gana y Menos de {c_line:.1f} Juegos", "pr": joint_probs["fav_under"], "pin_pr": joint_probs["fav_under"], "base": (1.0 / fav_u_odd) if fav_u_odd else (p_fav * 0.50), "alt_odd": fav_u_odd})
         if fav_o_odd and fav_o_odd > 1.05:
-            candidates.append({"cat": "GANADOR + TOTAL", "play": f"{s_fav_short} Gana y Más de {c_line:.1f} Juegos [Combo Correlacionado]", "pr": joint_probs["fav_over"], "pin_pr": joint_probs["fav_over"], "base": 1.0 / fav_o_odd, "alt_odd": fav_o_odd})
+            candidates.append({"cat": "GANADOR + TOTAL", "play": f"{s_fav_short} Gana y Más de {c_line:.1f} Juegos", "pr": joint_probs["fav_over"], "pin_pr": joint_probs["fav_over"], "base": 1.0 / fav_o_odd, "alt_odd": fav_o_odd})
 
     valid_candidates: List[Dict[str, Any]] = []
     for item in candidates:
@@ -866,22 +867,81 @@ def main():
     top_cards = [c for c in cards if c][:MAX_PICKS]
     port = allocate_daily_compound_portfolio(top_cards, bankroll=bankroll, stealth_round=True)
 
-    print(f"{C_CYN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓{C_RST}")
-    print(f"{C_CYN}┃ {C_WHT}{C_BLD}ARGON v54 // ALTENAR DEEP-EXTRACTOR & COMPOUNDER              {C_RST}{C_CYN}┃{C_RST}")
-    print(f"{C_CYN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛{C_RST}")
-    for idx, c in enumerate(top_cards, 1):
-        if c.get("is_vig_trap"):
-            print(f"{C_RED}⚠️  ALERTA #{idx} [CAMPO MINADO]{C_RST} {c['fav']} vs {c['dog']} -> {c['play']} @ {c['alt_odd']:.2f} ({c['alt_amer']}) │ EV {c['roi_edge']:.1f}% (NO ENTRAR)")
-        else:
-            print(f"{C_GRN}🔥 JUGADA #{idx} [{c['cat']}]{C_RST} {c['fav']} vs {c['dog']} -> {c['play']}")
-            print(f"   🎯 EN TRIUNFOBET: {c['alt_amer']} ({c['alt_odd']:.2f}) │ Prob: {c['prob_pct']:.1f}% │ EV: +{c['roi_edge']:.1f}% │ Stake Stealth: ${c['stake']:.2f}")
+    now_ve = datetime.now(TZ_VE).strftime("%d/%m/%Y %I:%M %p")
+    print(f"\n{C_CYN}┏{'━'*(W_CARD-2)}┓{C_RST}")
+    print(f"{C_CYN}┃ {C_WHT}{C_BLD}ARGON v54 // TRIUNFOBET ORACLE{C_RST}{' '*(max(0, W_CARD-33))}{C_CYN}┃{C_RST}")
+    print(f"{C_CYN}┃ ⏰ {now_ve:<{W_CARD-6}} {C_CYN}┃{C_RST}")
+    print(f"{C_CYN}┗{'━'*(W_CARD-2)}┛{C_RST}\n")
+
+    real_picks = [c for c in top_cards if not c.get("is_vig_trap")]
+    trap_picks = [c for c in top_cards if c.get("is_vig_trap")]
+
+    for idx, c in enumerate(real_picks, start=1):
+        fav_s = c.get('fav', '').split()[-1] if c.get('fav') else 'P1'
+        dog_s = c.get('dog', '').split()[-1] if c.get('dog') else 'P2'
+        vs_line = f"{fav_s} vs {dog_s}"[:W_CARD-6]
+        lg_line = c.get('league', '')[:W_CARD-6]
+        tm_line = c.get('time_ve', '')[:W_CARD-6]
+        raw_play = c.get('play', '').replace(' [Pestaña Principal]', '').replace(' [Combo Correlacionado]', '')
+        play_line = raw_play[:W_CARD-7]
+        is_live = c.get('is_live_tb', False) and c.get('alt_odd') is not None
+        odd_line = f"{c['alt_odd']:.2f} ({c['alt_amer']})" if is_live else f">= {c['trig_dec']:.2f} ({c['trig_amer']})"
+        stake_line = f"${c['stake']:.2f} (Entrar con ${c['stake']:.0f})"
+        ev_line = f"+{c['roi_edge']:.1f}% (+EV)"
+        prob_line = f"{c['prob_pct']:.1f}% real"
+
+        print(f"{C_CYN}┌{'─'*(W_CARD-2)}┐{C_RST}")
+        print(f"{C_CYN}│{C_RST} {C_GRN}{C_BLD}🔥 TICKET #{idx}: ENTRAR EN TRIUNFOBET{C_RST}{' '*(max(0, W_CARD-36))}{C_CYN}│{C_RST}")
+        print(f"{C_CYN}├{'─'*(W_CARD-2)}┤{C_RST}")
+        print(f"{C_CYN}│{C_RST} 🎾 {vs_line:<{W_CARD-6}} {C_CYN}│{C_RST}")
+        print(f"{C_CYN}│{C_RST} 🏆 {lg_line:<{W_CARD-6}} {C_CYN}│{C_RST}")
+        print(f"{C_CYN}│{C_RST} ⏰ {tm_line:<{W_CARD-6}} {C_CYN}│{C_RST}")
+        print(f"{C_CYN}├{'─'*(W_CARD-2)}┤{C_RST}")
+        print(f"{C_CYN}│{C_RST} {C_YLW}{C_BLD}👉 SELECCIÓN A BUSCAR:{C_RST}{' '*(max(0, W_CARD-24))}{C_CYN}│{C_RST}")
+        print(f"{C_CYN}│{C_RST}    {C_WHT}{C_BLD}{play_line:<{W_CARD-7}}{C_RST} {C_CYN}│{C_RST}")
+        print(f"{C_CYN}│{C_RST}{' '*(W_CARD-2)}{C_CYN}│{C_RST}")
+        print(f"{C_CYN}│{C_RST} 💵 Cuota Triunfobet : {C_YLW}{odd_line:<{max(0, W_CARD-24)}}{C_RST}{C_CYN}│{C_RST}")
+        print(f"{C_CYN}│{C_RST} 💰 Cuánto apostar   : {C_GRN}{C_BLD}{stake_line:<{max(0, W_CARD-24)}}{C_RST}{C_CYN}│{C_RST}")
+        print(f"{C_CYN}│{C_RST} 📈 Ventaja esperada : {C_GRN}{ev_line:<{max(0, W_CARD-24)}}{C_RST}{C_CYN}│{C_RST}")
+        print(f"{C_CYN}│{C_RST} 🎯 Probabilidad     : {C_CYN}{prob_line:<{max(0, W_CARD-24)}}{C_RST}{C_CYN}│{C_RST}")
+        print(f"{C_CYN}└{'─'*(W_CARD-2)}┘{C_RST}\n")
+
+    for idx, c in enumerate(trap_picks, start=1):
+        fav_s = c.get('fav', '').split()[-1] if c.get('fav') else 'P1'
+        dog_s = c.get('dog', '').split()[-1] if c.get('dog') else 'P2'
+        vs_line = f"{fav_s} vs {dog_s}"[:W_CARD-6]
+        lg_line = c.get('league', '')[:W_CARD-6]
+        raw_play = c.get('play', '').replace(' [Pestaña Principal]', '')
+        play_line = raw_play[:W_CARD-7]
+        odd_line = f"{c['alt_odd']:.2f} ({c['alt_amer']})"
+        ev_line = f"{c['roi_edge']:.1f}% EV"
+
+        print(f"{C_RED}┌{'─'*(W_CARD-2)}┐{C_RST}")
+        print(f"{C_RED}│{C_RST} {C_RED}{C_BLD}⚠️  ALERTA #{idx}: NO APOSTAR (TRAMPA){C_RST}{' '*(max(0, W_CARD-36))}{C_RED}│{C_RST}")
+        print(f"{C_RED}├{'─'*(W_CARD-2)}┤{C_RST}")
+        print(f"{C_RED}│{C_RST} 🎾 {vs_line:<{W_CARD-6}} {C_RED}│{C_RST}")
+        print(f"{C_RED}│{C_RST} 🏆 {lg_line:<{W_CARD-6}} {C_RED}│{C_RST}")
+        print(f"{C_RED}├{'─'*(W_CARD-2)}┤{C_RST}")
+        print(f"{C_RED}│{C_RST} {C_RED}{C_BLD}❌ APUESTA TRAMPA:{C_RST}{' '*(max(0, W_CARD-20))}{C_RED}│{C_RST}")
+        print(f"{C_RED}│{C_RST}    {play_line:<{W_CARD-7}} {C_RED}│{C_RST}")
+        print(f"{C_RED}│{C_RST}    Paga solo: {odd_line:<{max(0, W_CARD-17)}} {C_RED}│{C_RST}")
+        print(f"{C_RED}│{C_RST} 📉 Pérdida esperada : {C_RED}{ev_line:<{max(0, W_CARD-24)}}{C_RST}{C_RED}│{C_RST}")
+        print(f"{C_RED}│{C_RST} 💡 Motivo: Cuota muy castigada       {C_RED}│{C_RST}")
+        print(f"{C_RED}└{'─'*(W_CARD-2)}┘{C_RST}\n")
+
     if port["total_staked"] > 0:
-        print(f"{C_CYN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓{C_RST}")
-        print(f"{C_CYN}┃ {C_WHT}{C_BLD}📈 PLAN DE INTERÉS COMPUESTO DIARIO & ESCUDO ANTI-LÍMITES    {C_RST}{C_CYN}┃{C_RST}")
-        print(f"{C_CYN}┃{C_RST} 💼 Capital Actual Hoy   : ${port['bankroll']:.2f} │ Exposición: ${port['total_staked']:.2f}")
-        print(f"{C_CYN}┃{C_RST} 🚀 Ganancia Diaria Esp. : +${port['expected_daily_profit']:.2f} (+{port['expected_daily_growth_pct']:.2f}% / día)")
-        print(f"{C_CYN}┃{C_RST} 🔄 Proyección Compuesta : 7 Días -> ${port['proj_7d_bankroll']:.2f} │ 30 Días -> ${port['proj_30d_bankroll']:.2f}")
-        print(f"{C_CYN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛{C_RST}")
+        print(f"{C_CYN}┌{'─'*(W_CARD-2)}┐{C_RST}")
+        print(f"{C_CYN}│{C_RST} {C_WHT}{C_BLD}📈 RESUMEN DEL DÍA Y COMPUESTO{C_RST}{' '*(max(0, W_CARD-31))}{C_CYN}│{C_RST}")
+        print(f"{C_CYN}├{'─'*(W_CARD-2)}┤{C_RST}")
+        print(f"{C_CYN}│{C_RST} 💼 Tu Capital Actual : ${port['bankroll']:<9.2f} {C_CYN}│{C_RST}")
+        print(f"{C_CYN}│{C_RST} 🎲 Dinero a Jugar Hoy: ${port['total_staked']:<9.2f} {C_CYN}│{C_RST}")
+        print(f"{C_CYN}│{C_RST} 🚀 Ganancia Esperada : +${port['expected_daily_profit']:.2f} ({port['expected_daily_growth_pct']:+.2f}%) {C_CYN}│{C_RST}")
+        print(f"{C_CYN}├{'─'*(W_CARD-2)}┤{C_RST}")
+        print(f"{C_CYN}│{C_RST} {C_CYN}🔄 META DE CRECIMIENTO:{C_RST}{' '*(max(0, W_CARD-25))}{C_CYN}│{C_RST}")
+        print(f"{C_CYN}│{C_RST}    • En 7 días  -> ${port['proj_7d_bankroll']:<9.2f}   {C_CYN}│{C_RST}")
+        print(f"{C_CYN}│{C_RST}    • En 30 días -> ${port['proj_30d_bankroll']:<9.2f}   {C_CYN}│{C_RST}")
+        print(f"{C_CYN}│{C_RST} 🛡️  Modo Stealth: Stakes Redondeados {C_CYN}│{C_RST}")
+        print(f"{C_CYN}└{'─'*(W_CARD-2)}┘{C_RST}\n")
 
 
 if __name__ == "__main__":
