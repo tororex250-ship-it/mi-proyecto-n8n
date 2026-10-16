@@ -46,7 +46,7 @@ MIN_ALLOWED_TRIG_DEC = 1.68
 W_CARD = 38
 
 C_RST, C_BLD, C_CYN = "\033[0m", "\033[1m", "\033[1;36m"
-C_GRN, C_RED, C_YLW, C_MAG, C_WHT = "\033[1;32m", "\033[1;31m", "\033[1;33m", "\033[1;35m", "\033[1;37m"
+C_GRN, C_RED, C_YLW, C_MAG, C_WHT, C_DIM = "\033[1;32m", "\033[1;31m", "\033[1;33m", "\033[1;35m", "\033[1;37m", "\033[2m"
 
 PINNACLE_BASE = "https://guest.api.arcadia.pinnacle.com/0.1"
 PINNACLE_KEY = "CmX2KcMrXuFmNg6YFbmTxE0y9CIr0i0R"
@@ -752,6 +752,96 @@ def enrich_altenar_event_details(alt_match: Dict[str, Any]) -> None:
         pass
 
 
+def parse_pinnacle_markets(mlist: List[Dict[str, Any]]) -> Dict[str, Any]:
+    pdata: Dict[str, Any] = {"tot_lines": {}, "s1_tot_lines": {}, "hcap_lines": {}, "set_hcap_15": None}
+    tot_cands, hcap_cands = [], []
+    for m in mlist:
+        mt, per, prs = m.get("type"), m.get("period", 0), m.get("prices", [])
+        if mt == "moneyline" and per == 0:
+            for pr in prs:
+                if pr.get("designation") == "home": pdata["ml_p1"] = amer_to_dec(pr.get("price"))
+                elif pr.get("designation") == "away": pdata["ml_p2"] = amer_to_dec(pr.get("price"))
+        elif mt == "total" and per == 0:
+            by_pts = {}
+            for pr in prs:
+                if pr.get("points") is not None:
+                    pts = round(float(pr.get("points", 0.0)), 2)
+                    if 17.5 <= pts <= 48.5:
+                        by_pts.setdefault(pts, {})[pr.get("designation", "")] = amer_to_dec(pr.get("price"))
+            for lv, d in by_pts.items():
+                if d.get("over") and d.get("under"):
+                    pdata["tot_lines"][lv] = (float(d["over"]), float(d["under"]))
+                    tot_cands.append((lv, float(d["over"]), float(d["under"])))
+        elif mt == "spread" and per == 0:
+            by_hc = {}
+            for pr in prs:
+                if pr.get("points") is not None:
+                    pts = round(float(pr.get("points", 0.0)), 2)
+                    key = round(abs(pts), 2)
+                    entry = by_hc.setdefault(key, {})
+                    if pr.get("designation") == "home": entry["home_pts"] = pts; entry["home_pr"] = amer_to_dec(pr.get("price"))
+                    elif pr.get("designation") == "away": entry["away_pr"] = amer_to_dec(pr.get("price"))
+            for kabs, d in by_hc.items():
+                if d.get("home_pts") is not None and d.get("home_pr") and d.get("away_pr"):
+                    hp, pr1, pr2 = float(d["home_pts"]), float(d["home_pr"]), float(d["away_pr"])
+                    if abs(kabs - 1.5) < 0.05: pdata["set_hcap_15"] = (hp, pr1, pr2)
+                    elif 2.0 <= kabs <= 9.5:
+                        pdata["hcap_lines"][-abs(hp)] = (pr1, pr2)
+                        pdata["hcap_lines"][abs(hp)] = (pr1, pr2)
+                        hcap_cands.append((hp, pr1, pr2))
+    if tot_cands:
+        tot_cands.sort(key=lambda x: (0 if abs((x[0] % 1.0) - 0.5) < 0.05 else 1, abs(x[1] - x[2])))
+        pdata["tot_line"], pdata["tot_ov"], pdata["tot_un"] = tot_cands[0][0], tot_cands[0][1], tot_cands[0][2]
+    if hcap_cands:
+        hcap_cands.sort(key=lambda x: (0 if abs((abs(x[0]) % 1.0) - 0.5) < 0.05 else 1, abs(x[1] - x[2])))
+        pdata["hcap_p1"], pdata["hcap_pr1"], pdata["hcap_pr2"] = hcap_cands[0][0], hcap_cands[0][1], hcap_cands[0][2]
+    return pdata
+
+
+def fetch_pinnacle(max_hours: float = 6.0) -> Tuple[List[Dict[str, Any]], int]:
+    try:
+        p_headers = {"X-API-Key": PINNACLE_KEY, "User-Agent": "Mozilla/5.0"}
+        now_utc = datetime.now(timezone.utc)
+        min_utc = now_utc + timedelta(minutes=5)
+        max_utc = now_utc + timedelta(hours=max_hours)
+        r_mu = requests.get(f"{PINNACLE_BASE}/sports/33/matchups", headers=p_headers, timeout=4.0)
+        r_mk = requests.get(f"{PINNACLE_BASE}/sports/33/markets/straight", headers=p_headers, timeout=4.0)
+        if r_mu.status_code != 200 or r_mk.status_code != 200:
+            return [], 0
+        matchups, markets = r_mu.json(), r_mk.json()
+        if not isinstance(matchups, list) or not isinstance(markets, list):
+            return [], 0
+        mid_map = {}
+        for m in markets:
+            if m.get("matchupId"):
+                mid_map.setdefault(m["matchupId"], []).append(m)
+        res = []
+        scanned = 0
+        for mu in matchups:
+            if mu.get("type") != "matchup" or mu.get("isLive"):
+                continue
+            lg = mu.get("league", {}).get("name", "")
+            pts = mu.get("participants", [])
+            if len(pts) < 2 or "/" in pts[0].get("name", ""):
+                continue
+            scanned += 1
+            st_str = mu.get("startTime", "")
+            try:
+                dt_start = datetime.fromisoformat(st_str.replace("Z", "+00:00"))
+            except Exception:
+                continue
+            if dt_start < min_utc or dt_start > max_utc:
+                continue
+            p1, p2 = pts[0]["name"], pts[1]["name"]
+            pdata = parse_pinnacle_markets(mid_map.get(mu.get("id"), []))
+            if pdata.get("ml_p1") and pdata.get("ml_p2") and min(pdata["ml_p1"], pdata["ml_p2"]) >= 1.14:
+                t_ve = dt_start.astimezone(TZ_VE).strftime("Hoy %I:%M %p VE")
+                res.append({"league": lg, "p1": p1, "p2": p2, "pin": pdata, "time_ve": t_ve, "is_live_future": True})
+        return res, scanned
+    except Exception:
+        return [], 0
+
+
 FALLBACK_ACTIVE = [
     {
         "league": "ATP Challenger Roanne",
@@ -862,8 +952,17 @@ def main():
             except Exception:
                 pass
     sr_client = SportradarDNAClient()
+    live_events, total_scanned = fetch_pinnacle(max_hours=6.0)
     alt_map = fetch_altenar_data()
-    cards = [evaluate_event(ev, alt_map, sr_client, allow_net=False, bankroll=bankroll) for ev in FALLBACK_ACTIVE]
+
+    is_test_mode = False
+    if live_events:
+        target_events = live_events
+    else:
+        target_events = FALLBACK_ACTIVE
+        is_test_mode = True
+
+    cards = [evaluate_event(ev, alt_map, sr_client, allow_net=False, bankroll=bankroll) for ev in target_events]
     top_cards = [c for c in cards if c][:MAX_PICKS]
     port = allocate_daily_compound_portfolio(top_cards, bankroll=bankroll, stealth_round=True)
 
@@ -871,6 +970,11 @@ def main():
     print(f"\n{C_CYN}┏{'━'*(W_CARD-2)}┓{C_RST}")
     print(f"{C_CYN}┃ {C_WHT}{C_BLD}ARGON v54 // TRIUNFOBET ORACLE{C_RST}{' '*(max(0, W_CARD-33))}{C_CYN}┃{C_RST}")
     print(f"{C_CYN}┃ ⏰ {now_ve:<{W_CARD-6}} {C_CYN}┃{C_RST}")
+    if is_test_mode:
+        print(f"{C_CYN}┃ {C_YLW}⚠ [MODO PRUEBA - PARTIDO PASADO]   {C_CYN}┃{C_RST}")
+        print(f"{C_CYN}┃ {C_DIM}No hay partidos de tenis ahora     {C_CYN}┃{C_RST}")
+    else:
+        print(f"{C_CYN}┃ {C_GRN}🟢 [EN VIVO] {len(target_events)} partidos futuros {C_CYN}┃{C_RST}")
     print(f"{C_CYN}┗{'━'*(W_CARD-2)}┛{C_RST}\n")
 
     real_picks = [c for c in top_cards if not c.get("is_vig_trap")]
